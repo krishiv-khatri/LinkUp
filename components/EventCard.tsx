@@ -1,0 +1,450 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Animated,
+    Dimensions,
+    Image,
+    Modal,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { toast } from 'sonner-native';
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width - 40;
+
+interface Event {
+  id: string;
+  title: string;
+  time: string;
+  location: string;
+  category: string;
+  attendingFriends: string[];
+  attendingCount: number;
+  coverImage: string;
+  description: string;
+}
+
+interface EventCardProps {
+  event: Event;
+  index: number;
+}
+
+const getCategoryGradient = (category: string): readonly [string, string] => {
+  switch (category) {
+    case 'music':
+      return ['#FF006E', '#8338EC'] as const;
+    case 'party':
+      return ['#FF6B35', '#F7931E'] as const;
+    case 'art':
+      return ['#8338EC', '#3A86FF'] as const;
+    case 'food':
+      return ['#FF006E', '#FF6B35'] as const;
+    default:
+      return ['#FF006E', '#8338EC'] as const;
+  }
+};
+
+const getCategoryIcon = (category: string) => {
+  switch (category) {
+    case 'music':
+      return 'musical-notes';
+    case 'party':
+      return 'wine';
+    case 'art':
+      return 'color-palette';
+    case 'food':
+      return 'restaurant';
+    default:
+      return 'star';
+  }
+};
+
+export default function EventCard({ event, index }: EventCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isRSVPed, setIsRSVPed] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Staggered entrance animation
+    Animated.timing(scaleAnim, {
+      toValue: 1,
+      duration: 600,
+      delay: index * 150,
+      useNativeDriver: true,
+    }).start();
+
+    // Subtle glow animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const handleRSVP = () => {
+    setIsRSVPed(!isRSVPed);
+    toast.success(isRSVPed ? 'RSVP removed' : 'You\'re going! 🎉');
+  };
+
+  const glowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
+  return (
+    <>
+      <Animated.View 
+        style={[
+          styles.cardContainer,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: scaleAnim,
+          }
+        ]}
+      >
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => setIsExpanded(true)}
+          activeOpacity={0.9}
+        >
+          <Animated.View style={[styles.glowBorder, { opacity: glowOpacity }]}>
+            <LinearGradient
+              colors={getCategoryGradient(event.category)}
+              style={styles.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </Animated.View>
+
+          <View style={styles.cardContent}>
+            <Image source={{ uri: event.coverImage }} style={styles.coverImage} />
+            
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              style={styles.imageOverlay}
+            />
+
+            <View style={styles.cardInfo}>
+              <View style={styles.categoryBadge}>
+                <LinearGradient
+                  colors={getCategoryGradient(event.category)}
+                  style={styles.categoryGradient}
+                >
+                  <Ionicons 
+                    name={getCategoryIcon(event.category) as any} 
+                    size={12} 
+                    color="white" 
+                  />
+                </LinearGradient>
+              </View>
+
+              <Text style={styles.eventTitle}>{event.title}</Text>
+              
+              <View style={styles.eventDetails}>
+                <View style={styles.detailItem}>
+                  <Ionicons name="time-outline" size={14} color="#888" />
+                  <Text style={styles.detailText}>{event.time}</Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <Ionicons name="location-outline" size={14} color="#888" />
+                  <Text style={styles.detailText}>{event.location}</Text>
+                </View>
+              </View>
+
+              <View style={styles.attendingSection}>
+                <View style={styles.friendAvatars}>
+                  {event.attendingFriends.slice(0, 3).map((avatar, idx) => (
+                    <Image
+                      key={idx}
+                      source={{ uri: avatar }}
+                      style={[styles.friendAvatar, { marginLeft: idx > 0 ? -8 : 0 }]}
+                    />
+                  ))}
+                  {event.attendingFriends.length > 3 && (
+                    <View style={[styles.friendAvatar, styles.moreCount, { marginLeft: -8 }]}>
+                      <Text style={styles.moreCountText}>+{event.attendingFriends.length - 3}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.attendingText}>
+                  {event.attendingCount} going
+                </Text>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <Modal
+        visible={isExpanded}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsExpanded(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity 
+              onPress={() => setIsExpanded(false)}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          <Image source={{ uri: event.coverImage }} style={styles.modalImage} />
+          
+          <LinearGradient
+            colors={['transparent', 'rgba(10,10,10,0.95)']}
+            style={styles.modalOverlay}
+          />
+
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{event.title}</Text>
+            <Text style={styles.modalDescription}>{event.description}</Text>
+            
+            <View style={styles.modalDetails}>
+              <View style={styles.modalDetailItem}>
+                <Ionicons name="time" size={20} color="#FF006E" />
+                <Text style={styles.modalDetailText}>{event.time}</Text>
+              </View>
+              <View style={styles.modalDetailItem}>
+                <Ionicons name="location" size={20} color="#FF006E" />
+                <Text style={styles.modalDetailText}>{event.location}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.rsvpButton, isRSVPed && styles.rsvpButtonActive]}
+              onPress={handleRSVP}
+            >
+              <LinearGradient
+                colors={isRSVPed ? ['#00C853', '#4CAF50'] : getCategoryGradient(event.category)}
+                style={styles.rsvpGradient}
+              >
+                <Ionicons 
+                  name={isRSVPed ? "checkmark-circle" : "add-circle"} 
+                  size={20} 
+                  color="white" 
+                />
+                <Text style={styles.rsvpButtonText}>
+                  {isRSVPed ? "You're Going!" : "RSVP"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  cardContainer: {
+    marginBottom: 24,
+  },
+  card: {
+    position: 'relative',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  glowBorder: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 22,
+    zIndex: -1,
+  },
+  gradient: {
+    flex: 1,
+    borderRadius: 22,
+  },
+  cardContent: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 20,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  coverImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  cardInfo: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+  },
+  categoryBadge: {
+    position: 'absolute',
+    top: -180,
+    right: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  categoryGradient: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eventTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: 'white',
+    marginBottom: 8,
+  },
+  eventDetails: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 16,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  detailText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  attendingSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  friendAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  friendAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#1A1A1A',
+  },
+  moreCount: {
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moreCountText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  attendingText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#0A0A0A',
+  },
+  modalHeader: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImage: {
+    width: '100%',
+    height: 300,
+    resizeMode: 'cover',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'flex-end',
+  },
+  modalTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: 'white',
+    marginBottom: 12,
+  },
+  modalDescription: {
+    fontSize: 16,
+    color: '#CCC',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  modalDetails: {
+    marginBottom: 32,
+    gap: 12,
+  },
+  modalDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalDetailText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  rsvpButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  rsvpButtonActive: {
+    // Additional styles for active state if needed
+  },
+  rsvpGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    gap: 8,
+  },
+  rsvpButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+});
