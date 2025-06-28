@@ -2,12 +2,12 @@ import EventCard from '@/components/EventCard'; // Adjusted path
 import FilterBar from '@/components/FilterBar'; // Adjusted path
 import React, { useRef, useState } from 'react';
 import {
-  Animated,
-  Dimensions,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View
+    Animated,
+    Dimensions,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -86,7 +86,8 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
-      <SafeAreaView style={styles.safeArea}>        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+      <SafeAreaView style={styles.safeArea}>
+        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
           <Text style={styles.headerTitle}>Right Now</Text>
           <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
         </Animated.View>
