@@ -1,3 +1,5 @@
+import { useAuth } from '@/contexts/AuthContext';
+import { eventService } from '@/services/eventService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
@@ -64,8 +66,10 @@ const getCategoryIcon = (category: string) => {
 };
 
 export default function EventCard({ event, index }: EventCardProps) {
+  const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRSVPed, setIsRSVPed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -93,11 +97,59 @@ export default function EventCard({ event, index }: EventCardProps) {
         }),
       ])
     ).start();
-  }, []);
 
-  const handleRSVP = () => {
-    setIsRSVPed(!isRSVPed);
-    toast.success(isRSVPed ? 'RSVP removed' : 'You\'re going! 🎉');
+    // Check if user is already attending this event
+    const checkAttendance = async () => {
+      if (user) {
+        const isAttending = await eventService.isAttending(event.id, user.id);
+        setIsRSVPed(isAttending);
+      }
+    };
+
+    checkAttendance();
+  }, [user, event.id]);
+
+  const handleRSVP = async () => {
+    if (!user) {
+      toast.error('Please sign in to RSVP');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      if (isRSVPed) {
+        // Cancel RSVP
+        const success = await eventService.cancelRsvp(event.id, user.id);
+        if (success) {
+          setIsRSVPed(false);
+          toast.success('RSVP cancelled');
+          // Optimistically update the attendee count
+          event.attendingCount = Math.max(0, event.attendingCount - 1);
+        } else {
+          toast.error('Failed to cancel RSVP');
+        }
+      } else {
+        // Add RSVP
+        const avatarUrl = user.avatarUrl || 
+          `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id.slice(0, 8)}`;
+        
+        const success = await eventService.rsvpToEvent(event.id, user.id, avatarUrl);
+        
+        if (success) {
+          setIsRSVPed(true);
+          toast.success('You\'re going! 🎉');
+          // Optimistically update the attendee count
+          event.attendingCount += 1;
+        } else {
+          toast.error('Failed to RSVP');
+        }
+      }
+    } catch (error) {
+      console.error('RSVP error:', error);
+      toast.error('Something went wrong');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const glowOpacity = glowAnim.interpolate({

@@ -1,6 +1,9 @@
+import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Toaster } from 'sonner-native';
@@ -18,9 +21,9 @@ function TabNavigation() {
         tabBarStyle: {
           backgroundColor: '#0A0A0A',
           borderTopWidth: 0,
-          height: 90,
-          paddingBottom: 20,
-          paddingTop: 10,
+          height: 65,
+          paddingBottom: 10,
+          paddingTop: 5,
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: any;
@@ -41,12 +44,12 @@ function TabNavigation() {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <Ionicons name={iconName} size={size} color="white" />
+                <Ionicons name={iconName} size={22} color="white" />
               </LinearGradient>
             );
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Ionicons name={iconName} size={22} color={color} />;
         },
         tabBarActiveTintColor: '#FFFFFF',
         tabBarInactiveTintColor: '#666666',
@@ -91,6 +94,25 @@ function TabNavigation() {
 }
 
 export default function Layout() {
+  const { user, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      // If no user is authenticated, redirect to the sign in page
+      router.replace('/sign-in');
+    }
+  }, [user, isLoading]);
+
+  // Don't render the app until we've checked auth
+  if (isLoading) {
+    return null;
+  }
+
+  // Don't render the app if the user is not authenticated
+  if (!user) {
+    return null;
+  }
+
   return (
     <SafeAreaProvider style={styles.container}>
       <Toaster />
@@ -105,15 +127,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0A',
   },
   activeTab: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tabBarLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 4,
+    marginTop: 2,
   },
 });

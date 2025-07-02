@@ -1,80 +1,30 @@
 import EventCard from '@/components/EventCard'; // Adjusted path
 import FilterBar from '@/components/FilterBar'; // Adjusted path
-import React, { useRef, useState } from 'react';
+import { Event, eventService } from '@/services/eventService';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
-const mockEvents = [
-  {
-    id: '1',
-    title: 'Clockenflap 2025',
-    time: '8 PM',
-    location: 'Central Harbourfront',
-    category: 'music',
-    attendingFriends: [
-      'https://api.a0.dev/assets/image?text=cool%20asian%20girl%20smiling&aspect=1:1&seed=1',
-      'https://api.a0.dev/assets/image?text=stylish%20guy%20with%20glasses&aspect=1:1&seed=2',
-      'https://api.a0.dev/assets/image?text=girl%20with%20pink%20hair&aspect=1:1&seed=3',
-    ],
-    attendingCount: 847,
-    coverImage: 'https://api.a0.dev/assets/image?text=music%20festival%20stage%20with%20neon%20lights%20and%20crowd&aspect=16:9&seed=10',
-    description: 'Hong Kong\'s biggest music festival is back! Three days of international acts, local bands, and unforgettable vibes.',
-  },
-  {
-    id: '2',
-    title: 'Rooftop Rave',
-    time: '11 PM',
-    location: 'Tsim Sha Tsui',
-    category: 'party',
-    attendingFriends: [
-      'https://api.a0.dev/assets/image?text=party%20girl%20with%20glitter&aspect=1:1&seed=4',
-      'https://api.a0.dev/assets/image?text=guy%20in%20neon%20shirt&aspect=1:1&seed=5',
-    ],
-    attendingCount: 156,
-    coverImage: 'https://api.a0.dev/assets/image?text=rooftop%20party%20hong%20kong%20skyline%20at%20night%20neon%20lights&aspect=16:9&seed=11',
-    description: 'Secret rooftop party with the best views of HK skyline. DJ sets, craft cocktails, and good vibes only.',
-  },
-  {
-    id: '3',
-    title: 'Art Gallery Opening',
-    time: '7 PM',
-    location: 'Sheung Wan',
-    category: 'art',
-    attendingFriends: [
-      'https://api.a0.dev/assets/image?text=artistic%20girl%20with%20beret&aspect=1:1&seed=6',
-    ],
-    attendingCount: 89,
-    coverImage: 'https://api.a0.dev/assets/image?text=modern%20art%20gallery%20with%20colorful%20paintings%20and%20people&aspect=16:9&seed=12',
-    description: 'Contemporary art showcase featuring emerging HK artists. Wine, art, and creative energy.',
-  },
-  {
-    id: '4',
-    title: 'Night Market Crawl',
-    time: '9 PM',
-    location: 'Mong Kok',
-    category: 'food',
-    attendingFriends: [
-      'https://api.a0.dev/assets/image?text=foodie%20guy%20eating%20street%20food&aspect=1:1&seed=7',
-      'https://api.a0.dev/assets/image?text=girl%20holding%20bubble%20tea&aspect=1:1&seed=8',
-      'https://api.a0.dev/assets/image?text=guy%20with%20chopsticks&aspect=1:1&seed=9',
-    ],
-    attendingCount: 234,
-    coverImage: 'https://api.a0.dev/assets/image?text=bustling%20hong%20kong%20night%20market%20with%20street%20food%20stalls&aspect=16:9&seed=13',
-    description: 'Explore the best street food in HK with fellow foodies. From dim sum to fish balls!',
-  },
-];
-
 export default function HomeScreen() {
   const [selectedFilter, setSelectedFilter] = useState('now');
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const headerOpacity = scrollY.interpolate({
@@ -82,6 +32,32 @@ export default function HomeScreen() {
     outputRange: [1, 0.9],
     extrapolate: 'clamp',
   });
+  
+  const fetchEvents = async () => {
+    try {
+      const data = await eventService.getEvents();
+      setEvents(data);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    fetchEvents();
+  }, []);
+  
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchEvents();
+  }, []);
+
+  const handleCreateEvent = () => {
+    router.push('/create-event');
+  };
 
   return (
     <View style={styles.container}>
@@ -105,18 +81,57 @@ export default function HomeScreen() {
             { useNativeDriver: false }
           )}
           scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#888888"
+              colors={["#888888"]}
+              progressBackgroundColor="#1A1A1A"
+            />
+          }
         >
-          <View style={styles.eventsContainer}>
-            {mockEvents.map((event, index) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                index={index}
-              />
-            ))}
-          </View>
+          {loading && !refreshing ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#FF006E" />
+              <Text style={styles.loadingText}>Loading events...</Text>
+            </View>
+          ) : events.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={60} color="#666" />
+              <Text style={styles.emptyText}>No events found</Text>
+              <Text style={styles.emptySubtext}>Check back later for upcoming events</Text>
+            </View>
+          ) : (
+            <View style={styles.eventsContainer}>
+              {events.map((event, index) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  index={index}
+                />
+              ))}
+            </View>
+          )}
           <View style={styles.bottomSpacing} />
         </Animated.ScrollView>
+        
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleCreateEvent}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={['#FF006E', '#8338EC']}
+            style={styles.fabGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.plusIconContainer}>
+              <Ionicons name="add" size={32} color="white" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
       </SafeAreaView>
     </View>
   );
@@ -129,7 +144,8 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },  header: {
+  },
+  header: {
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 4,
@@ -151,10 +167,63 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },  eventsContainer: {
+  },
+  loadingContainer: {
+    flex: 1,
+    paddingTop: 100,
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: 'white',
+    marginTop: 16,
+    fontSize: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    paddingTop: 100,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: 'white',
+    marginTop: 16,
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  emptySubtext: {
+    color: '#888',
+    marginTop: 8,
+    fontSize: 16,
+  },
+  eventsContainer: {
     paddingHorizontal: 24,
   },
   bottomSpacing: {
-    height: 100,
+    height: 50,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  fabGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  plusIconContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
   },
 });
