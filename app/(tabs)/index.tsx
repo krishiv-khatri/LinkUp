@@ -1,13 +1,13 @@
-import EventCard from '@/components/EventCard'; // Adjusted path
-import FilterBar from '@/components/FilterBar'; // Adjusted path
+import EventCard from '@/components/EventCard';
+import FilterBar from '@/components/FilterBar';
 import React, { useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View
+  Animated,
+  Dimensions,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -129,7 +129,8 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },  header: {
+  },
+  header: {
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 4,
@@ -151,7 +152,8 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },  eventsContainer: {
+  },
+  eventsContainer: {
     paddingHorizontal: 24,
   },
   bottomSpacing: {
