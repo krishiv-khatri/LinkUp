@@ -1,19 +1,23 @@
+import AnimatedGradientBackground from '@/components/AnimatedGradientBackground';
+import AnimatedWave from '@/components/AnimatedWave';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, router } from 'expo-router';
-import React, { useState } from 'react';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SignInScreen() {
+  const params = useLocalSearchParams();
+  const animationType = params.fromSignUp ? 'fade' : 'fade_from_bottom';
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,12 +48,27 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Sign In', headerShown: false }} />
-      
+      <Stack.Screen options={{ title: 'Sign In', headerShown: false, animation: animationType }} />
+      <View style={styles.gradientContainer}>
+        <AnimatedGradientBackground height={'45%'} style={styles.gradientBg} />
+        {/* Animated wavy SVG overlay at the bottom of the gradient */}
+        <AnimatedWave
+          style={styles.wave}
+          color={styles.container.backgroundColor || '#0A0A0A'}
+          width={400}
+          height={100}
+          amplitude={30}
+        />
+        {/* Opacity gradient overlay for soft fade-out */}
+        <LinearGradient
+          colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.5)', styles.container.backgroundColor || '#0A0A0A']}
+          style={styles.waveFade}
+          pointerEvents="none"
+        />
+      </View>
       <View style={styles.content}>
         <Text style={styles.title}>LinkUp</Text>
         <Text style={styles.subtitle}>Sign in to your account</Text>
-        
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
@@ -63,7 +82,6 @@ export default function SignInScreen() {
               keyboardType="email-address"
             />
           </View>
-          
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
@@ -75,7 +93,6 @@ export default function SignInScreen() {
               onChangeText={setPassword}
             />
           </View>
-          
           <TouchableOpacity
             style={styles.button}
             onPress={handleSignIn}
@@ -94,7 +111,6 @@ export default function SignInScreen() {
               )}
             </LinearGradient>
           </TouchableOpacity>
-          
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account?</Text>
             <TouchableOpacity onPress={() => router.push('/sign-up')}>
@@ -112,8 +128,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0A0A',
   },
+  gradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '45%',
+    zIndex: 1,
+  },
+  gradientBg: {
+    width: '100%',
+    height: '100%',
+  },
+  wave: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
+    zIndex: 2,
+  },
+  waveFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
+    height: 300,
+    zIndex: 3,
+  },
   content: {
     flex: 1,
+    zIndex: 2,
     padding: 24,
     justifyContent: 'center',
   },

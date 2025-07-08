@@ -1,15 +1,17 @@
+import AnimatedGradientBackground from '@/components/AnimatedGradientBackground';
+import AnimatedWave from '@/components/AnimatedWave';
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router } from 'expo-router';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -39,7 +41,7 @@ export default function SignUpScreen() {
         console.log(`Sign up error: ${error}`);
       } else {
         console.log('Account created! Check your email to confirm your registration.');
-        router.replace('/sign-in');
+        router.replace({ pathname: '/sign-in', params: { fromSignUp: '1' } });
       }
     } catch (error) {
       console.error('Sign up error:', error);
@@ -50,12 +52,27 @@ export default function SignUpScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: 'Sign Up', headerShown: false }} />
-      
+      <Stack.Screen options={{ title: 'Sign Up', headerShown: false, animation: 'fade' }} />
+      <View style={styles.gradientContainer}>
+        <AnimatedGradientBackground height={'45%'} style={styles.gradientBg} />
+        {/* Animated wavy SVG overlay at the bottom of the gradient */}
+        <AnimatedWave
+          style={styles.wave}
+          color={styles.container.backgroundColor || '#0A0A0A'}
+          width={400}
+          height={100}
+          amplitude={30}
+        />
+        {/* Opacity gradient overlay for soft fade-out */}
+        <LinearGradient
+          colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.5)', styles.container.backgroundColor || '#0A0A0A']}
+          style={styles.waveFade}
+          pointerEvents="none"
+        />
+      </View>
       <View style={styles.content}>
         <Text style={styles.title}>LinkUp</Text>
         <Text style={styles.subtitle}>Create an account</Text>
-        
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
@@ -69,7 +86,6 @@ export default function SignUpScreen() {
               keyboardType="email-address"
             />
           </View>
-          
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
@@ -81,7 +97,6 @@ export default function SignUpScreen() {
               onChangeText={setPassword}
             />
           </View>
-          
           <View style={styles.inputContainer}>
             <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
@@ -93,7 +108,6 @@ export default function SignUpScreen() {
               onChangeText={setConfirmPassword}
             />
           </View>
-          
           <TouchableOpacity
             style={styles.button}
             onPress={handleSignUp}
@@ -112,10 +126,9 @@ export default function SignUpScreen() {
               )}
             </LinearGradient>
           </TouchableOpacity>
-          
           <View style={styles.footer}>
             <Text style={styles.footerText}>Already have an account?</Text>
-            <TouchableOpacity onPress={() => router.push('/sign-in')}>
+            <TouchableOpacity onPress={() => router.push({ pathname: '/sign-in', params: { fromSignUp: '1' } })}>
               <Text style={styles.footerLink}>Sign In</Text>
             </TouchableOpacity>
           </View>
@@ -130,8 +143,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0A0A',
   },
+  gradientContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '45%',
+    zIndex: 1,
+  },
+  gradientBg: {
+    width: '100%',
+    height: '100%',
+  },
+  wave: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
+    zIndex: 2,
+  },
+  waveFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
+    height: 300,
+    zIndex: 3,
+  },
   content: {
     flex: 1,
+    zIndex: 2,
     padding: 24,
     justifyContent: 'center',
   },

@@ -55,6 +55,14 @@ export default function HomeScreen() {
     fetchEvents();
   }, []);
 
+  // Filter events based on selectedFilter
+  const filteredEvents = React.useMemo(() => {
+    if (['music', 'party', 'art', 'food'].includes(selectedFilter)) {
+      return events.filter(event => event.category === selectedFilter);
+    }
+    return events;
+  }, [events, selectedFilter]);
+
   const handleCreateEvent = () => {
     router.push('/create-event');
   };
@@ -96,7 +104,7 @@ export default function HomeScreen() {
               <ActivityIndicator size="large" color="#FF006E" />
               <Text style={styles.loadingText}>Loading events...</Text>
             </View>
-          ) : events.length === 0 ? (
+          ) : filteredEvents.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="calendar-outline" size={60} color="#666" />
               <Text style={styles.emptyText}>No events found</Text>
@@ -104,7 +112,7 @@ export default function HomeScreen() {
             </View>
           ) : (
             <View style={styles.eventsContainer}>
-              {events.map((event, index) => (
+              {filteredEvents.map((event, index) => (
                 <EventCard
                   key={event.id}
                   event={event}
