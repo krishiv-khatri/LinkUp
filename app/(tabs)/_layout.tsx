@@ -62,7 +62,8 @@ export default function Layout() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/sign-in');
+      // If no user is authenticated, redirect to the sign in page
+      router.replace('/onboarding');
     }
   }, [user, isLoading]);
 
