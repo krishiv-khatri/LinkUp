@@ -31,7 +31,6 @@ export const eventService = {
         time, 
         location, 
         category,
-        attending_count,
         cover_image,
         description,
         created_at
@@ -43,14 +42,20 @@ export const eventService = {
       return [];
     }
     
-    // Fetch attending friends' avatars for each event
+    // Fetch attending friends' avatars for each event and calculate count
     const eventsWithAttendees = await Promise.all(
       events.map(async (event) => {
-        const { data: attendees } = await supabase
+        const { data: attendees, error: attendeesError } = await supabase
           .from('attendees')
           .select('avatar_url')
-          .eq('event_id', event.id)
-          .limit(5);
+          .eq('event_id', event.id);
+        
+        if (attendeesError) {
+          console.error('Error fetching attendees for event', event.id, attendeesError);
+        }
+        
+        const attendingFriends = attendees?.map(a => a.avatar_url) || [];
+        const attendingCount = attendees?.length || 0;
         
         return {
           id: event.id,
@@ -58,10 +63,10 @@ export const eventService = {
           time: event.time,
           location: event.location,
           category: event.category,
-          attendingCount: event.attending_count,
+          attendingCount,
           coverImage: event.cover_image,
           description: event.description,
-          attendingFriends: attendees?.map(a => a.avatar_url) || []
+          attendingFriends: attendingFriends.slice(0, 5) // Limit to 5 for display
         };
       })
     );
@@ -79,7 +84,6 @@ export const eventService = {
         time, 
         location, 
         category,
-        attending_count,
         cover_image,
         description
       `)
@@ -91,12 +95,18 @@ export const eventService = {
       return null;
     }
     
-    // Get attendees
-    const { data: attendees } = await supabase
+    // Get attendees and count
+    const { data: attendees, error: attendeesError } = await supabase
       .from('attendees')
       .select('avatar_url')
-      .eq('event_id', id)
-      .limit(5);
+      .eq('event_id', id);
+    
+    if (attendeesError) {
+      console.error('Error fetching attendees for event', id, attendeesError);
+    }
+    
+    const attendingFriends = attendees?.map(a => a.avatar_url) || [];
+    const attendingCount = attendees?.length || 0;
     
     return {
       id: event.id,
@@ -104,10 +114,10 @@ export const eventService = {
       time: event.time,
       location: event.location,
       category: event.category,
-      attendingCount: event.attending_count,
+      attendingCount,
       coverImage: event.cover_image,
       description: event.description,
-      attendingFriends: attendees?.map(a => a.avatar_url) || []
+      attendingFriends: attendingFriends.slice(0, 5) // Limit to 5 for display
     };
   },
   
@@ -121,8 +131,7 @@ export const eventService = {
         location: event.location,
         category: event.category,
         cover_image: event.coverImage,
-        description: event.description,
-        attending_count: 0
+        description: event.description
       })
       .select()
       .single();
@@ -133,10 +142,15 @@ export const eventService = {
     }
     
     return {
-      ...data,
+      id: data.id,
+      title: data.title,
+      time: data.time,
+      location: data.location,
+      category: data.category,
       attendingFriends: [],
       attendingCount: 0,
-      coverImage: data.cover_image
+      coverImage: data.cover_image,
+      description: data.description
     };
   },
   
@@ -196,5 +210,20 @@ export const eventService = {
     }
     
     return true;
+  },
+  
+  // Get the current attendee count for an event
+  async getAttendeeCount(eventId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from('attendees')
+      .select('id', { count: 'exact' })
+      .eq('event_id', eventId);
+    
+    if (error) {
+      console.error('Error getting attendee count', error);
+      return 0;
+    }
+    
+    return data?.length || 0;
   }
 }; 

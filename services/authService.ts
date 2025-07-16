@@ -9,6 +9,13 @@ export interface User {
   status?: string;
   statusType?: string;
   isOutOfTown?: boolean;
+  dateOfBirth?: string;
+  socialHandles?: {
+    instagram?: string;
+    tiktok?: string;
+    twitter?: string;
+    snapchat?: string;
+  };
 }
 
 export const authService = {
@@ -32,7 +39,9 @@ export const authService = {
       avatarUrl: profile?.avatar_url,
       status: profile?.status,
       statusType: profile?.status_type,
-      isOutOfTown: profile?.is_out_of_town
+      isOutOfTown: profile?.is_out_of_town,
+      dateOfBirth: profile?.date_of_birth,
+      socialHandles: profile?.social_handles,
     };
   },
   
@@ -49,6 +58,23 @@ export const authService = {
     
     if (!data.user) {
       return { user: null, error: 'Failed to create user' };
+    }
+
+    // Create or update a profile record for the new user using upsert
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: data.user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'id'
+      });
+
+    if (profileError) {
+      console.error('Error creating profile:', profileError);
+      // Don't return an error here as the user was created successfully
+      // The profile can be created later during onboarding
     }
     
     return {
@@ -90,7 +116,9 @@ export const authService = {
         avatarUrl: profile?.avatar_url,
         status: profile?.status,
         statusType: profile?.status_type,
-        isOutOfTown: profile?.is_out_of_town
+        isOutOfTown: profile?.is_out_of_town,
+        dateOfBirth: profile?.date_of_birth,
+        socialHandles: profile?.social_handles,
       },
       error: null
     };
@@ -117,16 +145,40 @@ export const authService = {
       ...(profile.status && { status: profile.status }),
       ...(profile.statusType && { status_type: profile.statusType }),
       ...(profile.isOutOfTown !== undefined && { is_out_of_town: profile.isOutOfTown }),
+      ...(profile.dateOfBirth && { date_of_birth: profile.dateOfBirth }),
+      ...(profile.socialHandles && { social_handles: profile.socialHandles }),
       updated_at: new Date().toISOString(),
     };
     
-    const { error } = await supabase
+    // First, ensure the profile exists
+    const { data: existingProfile } = await supabase
       .from('profiles')
-      .update(updates)
-      .eq('id', user.id);
+      .select('id')
+      .eq('id', user.id)
+      .single();
     
-    if (error) {
-      return { success: false, error: error.message };
+    if (!existingProfile) {
+      // Create the profile if it doesn't exist
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          ...updates,
+        });
+        
+      if (insertError) {
+        return { success: false, error: insertError.message };
+      }
+    } else {
+      // Update the existing profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
+      
+      if (updateError) {
+        return { success: false, error: updateError.message };
+      }
     }
     
     return { success: true, error: null };

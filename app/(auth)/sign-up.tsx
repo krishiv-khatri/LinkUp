@@ -6,30 +6,93 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SignUpScreen() {
   const { signUp } = useAuth();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (text && !validateEmail(text)) {
+      setValidationErrors(prev => ({ ...prev, email: 'Please enter a valid email address' }));
+    } else {
+      setValidationErrors(prev => ({ ...prev, email: '' }));
+    }
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (text.length > 0 && text.length < 6) {
+      setValidationErrors(prev => ({ ...prev, password: 'Password must be at least 6 characters' }));
+    } else {
+      setValidationErrors(prev => ({ ...prev, password: '' }));
+    }
+    
+    // Check confirm password match if it exists
+    if (confirmPassword && text !== confirmPassword) {
+      setValidationErrors(prev => ({ ...prev, confirmPassword: 'Passwords do not match' }));
+    } else if (confirmPassword) {
+      setValidationErrors(prev => ({ ...prev, confirmPassword: '' }));
+    }
+  };
+
+  const handleConfirmPasswordChange = (text: string) => {
+    setConfirmPassword(text);
+    if (text && text !== password) {
+      setValidationErrors(prev => ({ ...prev, confirmPassword: 'Passwords do not match' }));
+    } else {
+      setValidationErrors(prev => ({ ...prev, confirmPassword: '' }));
+    }
+  };
 
   const handleSignUp = async () => {
-    if (!email || !password || !confirmPassword) {
-      console.log('Please fill in all fields');
+    // Reset validation errors
+    setValidationErrors({ email: '', password: '', confirmPassword: '' });
+
+    // Validate all fields
+    if (!firstName.trim() || !lastName.trim() || !email || !password || !confirmPassword) {
+      Alert.alert('Almost there!', 'Please fill in all fields to create your account.');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address to continue.');
       return;
     }
 
     if (password !== confirmPassword) {
-      console.log('Passwords do not match');
+      Alert.alert('Password Mismatch', 'Your passwords don\'t match. Please check and try again.');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Password Too Short', 'Your password must be at least 6 characters long for security.');
       return;
     }
 
@@ -38,24 +101,35 @@ export default function SignUpScreen() {
       const { error } = await signUp(email, password);
 
       if (error) {
-        console.log(`Sign up error: ${error}`);
+        Alert.alert('Sign Up Failed', error);
       } else {
-        console.log('Account created! Check your email to confirm your registration.');
-        router.replace({ pathname: '/sign-in', params: { fromSignUp: '1' } });
+        // Account created successfully - immediately navigate to onboarding
+        router.push({ 
+          pathname: '/onboarding-profile', 
+          params: { 
+            firstName: firstName.trim(), 
+            lastName: lastName.trim(), 
+            email,
+            fromSignUp: '1'
+          } 
+        });
       }
     } catch (error) {
       console.error('Sign up error:', error);
+      Alert.alert('Oops!', 'Something unexpected happened. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const isFormValid = firstName.trim() && lastName.trim() && email && password && confirmPassword && 
+                     validateEmail(email) && password.length >= 6 && password === confirmPassword;
 
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Sign Up', headerShown: false, animation: 'fade' }} />
       <View style={styles.gradientContainer}>
         <AnimatedGradientBackground height={'45%'} style={styles.gradientBg} />
-        {/* Animated wavy SVG overlay at the bottom of the gradient */}
         <AnimatedWave
           style={styles.wave}
           color={styles.container.backgroundColor || '#0A0A0A'}
@@ -63,58 +137,139 @@ export default function SignUpScreen() {
           height={100}
           amplitude={30}
         />
-        {/* Opacity gradient overlay for soft fade-out */}
         <LinearGradient
           colors={['rgba(10,10,10,0)', 'rgba(10,10,10,0.5)', styles.container.backgroundColor || '#0A0A0A']}
-          style={styles.waveFade}
-          pointerEvents="none"
+          style={styles.gradientOverlay}
         />
       </View>
       <View style={styles.content}>
-        <Text style={styles.title}>LinkUp</Text>
-        <Text style={styles.subtitle}>Create an account</Text>
+        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.subtitle}>Join LinkUp and start connecting</Text>
+        
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#666"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
+          <View style={styles.nameRow}>
+            <View style={[styles.inputContainer, styles.nameInput]}>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="First Name"
+                  placeholderTextColor="#666"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                />
+                {firstName.trim() && (
+                  <Ionicons name="checkmark-circle" size={20} color="#00C853" style={styles.validIcon} />
+                )}
+              </View>
+            </View>
+            <View style={[styles.inputContainer, styles.nameInput]}>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color="#666" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Last Name"
+                  placeholderTextColor="#666"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                />
+                {lastName.trim() && (
+                  <Ionicons name="checkmark-circle" size={20} color="#00C853" style={styles.validIcon} />
+                )}
+              </View>
+            </View>
           </View>
+          
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#666"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
+            <View style={[styles.inputWrapper, validationErrors.email && styles.inputError]}>
+              <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email Address"
+                placeholderTextColor="#666"
+                value={email}
+                onChangeText={handleEmailChange}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+              />
+              {email && !validationErrors.email && validateEmail(email) && (
+                <Ionicons name="checkmark-circle" size={20} color="#00C853" style={styles.validIcon} />
+              )}
+              {validationErrors.email && (
+                <Ionicons name="alert-circle" size={20} color="#FF6B6B" style={styles.validIcon} />
+              )}
+            </View>
+            {validationErrors.email && (
+              <Text style={styles.errorText}>{validationErrors.email}</Text>
+            )}
           </View>
+
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              placeholderTextColor="#666"
-              secureTextEntry
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-            />
+            <View style={[styles.inputWrapper, validationErrors.password && styles.inputError]}>
+              <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#666"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={handlePasswordChange}
+                autoComplete="new-password"
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons 
+                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </TouchableOpacity>
+            </View>
+            {validationErrors.password && (
+              <Text style={styles.errorText}>{validationErrors.password}</Text>
+            )}
           </View>
+
+          <View style={styles.inputContainer}>
+            <View style={[styles.inputWrapper, validationErrors.confirmPassword && styles.inputError]}>
+              <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm Password"
+                placeholderTextColor="#666"
+                secureTextEntry={!showConfirmPassword}
+                value={confirmPassword}
+                onChangeText={handleConfirmPasswordChange}
+                autoComplete="new-password"
+              />
+              <TouchableOpacity
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons 
+                  name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </TouchableOpacity>
+            </View>
+            {validationErrors.confirmPassword && (
+              <Text style={styles.errorText}>{validationErrors.confirmPassword}</Text>
+            )}
+          </View>
+
           <TouchableOpacity
-            style={styles.button}
+            style={[styles.button, !isFormValid && styles.buttonDisabled]}
             onPress={handleSignUp}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !isFormValid}
           >
             <LinearGradient
-              colors={['#FF006E', '#8338EC']}
+              colors={isFormValid ? ['#FF006E', '#8338EC'] : ['#333', '#333']}
               style={styles.buttonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -122,13 +277,16 @@ export default function SignUpScreen() {
               {isSubmitting ? (
                 <ActivityIndicator color="white" />
               ) : (
-                <Text style={styles.buttonText}>Create Account</Text>
+                <Text style={[styles.buttonText, !isFormValid && styles.buttonTextDisabled]}>
+                  Create Account
+                </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
+
           <View style={styles.footer}>
             <Text style={styles.footerText}>Already have an account?</Text>
-            <TouchableOpacity onPress={() => router.push({ pathname: '/sign-in', params: { fromSignUp: '1' } })}>
+            <TouchableOpacity onPress={() => router.push('/sign-in')}>
               <Text style={styles.footerLink}>Sign In</Text>
             </TouchableOpacity>
           </View>
@@ -148,82 +306,116 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: '45%',
-    zIndex: 1,
+    height: '50%',
   },
   gradientBg: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   wave: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: -1,
-    zIndex: 2,
   },
-  waveFade: {
+  gradientOverlay: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: -1,
-    height: 300,
-    zIndex: 3,
+    height: '30%',
   },
   content: {
     flex: 1,
-    zIndex: 2,
-    padding: 24,
     justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 80,
   },
   title: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 'bold',
     color: 'white',
-    textAlign: 'center',
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#888',
-    textAlign: 'center',
     marginBottom: 40,
+    textAlign: 'center',
   },
   form: {
     width: '100%',
+    maxWidth: 400,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  nameInput: {
+    flex: 1,
   },
   inputContainer: {
+    marginBottom: 16,
+  },
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
     paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  inputError: {
+    borderColor: '#FF6B6B',
   },
   inputIcon: {
     marginRight: 12,
   },
   input: {
     flex: 1,
-    height: 56,
-    color: 'white',
     fontSize: 16,
+    color: 'white',
+  },
+  validIcon: {
+    marginLeft: 8,
+  },
+  passwordToggle: {
+    marginLeft: 8,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   button: {
-    height: 56,
-    borderRadius: 8,
-    overflow: 'hidden',
     marginTop: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonGradient: {
-    flex: 1,
-    justifyContent: 'center',
+    paddingVertical: 16,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   buttonText: {
+    fontSize: 18,
+    fontWeight: '600',
     color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  },
+  buttonTextDisabled: {
+    color: '#666',
   },
   footer: {
     flexDirection: 'row',
@@ -234,11 +426,11 @@ const styles = StyleSheet.create({
   footerText: {
     color: '#888',
     fontSize: 14,
-    marginRight: 8,
   },
   footerLink: {
     color: '#FF006E',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    marginLeft: 4,
   },
 }); 

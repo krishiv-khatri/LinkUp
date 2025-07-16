@@ -44,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
+        
         if (event === 'SIGNED_IN' && session?.user) {
           const currentUser = await authService.getCurrentUser();
           setUser(currentUser);
@@ -86,7 +88,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error };
       }
       
-      // The user will need to verify their email before they're fully logged in
+      // Set the user state immediately after successful sign-up
+      // This ensures the user context is available for the onboarding flow
+      if (user) {
+        setUser(user);
+      }
+      
       return { error: null };
     } catch (error) {
       return { error: (error as Error).message };
@@ -117,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authService.updateProfile(profile);
       
       if (result.success && user) {
+        // Update the user state with the new profile information
         setUser({
           ...user,
           ...profile,

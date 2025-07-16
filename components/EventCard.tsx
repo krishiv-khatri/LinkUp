@@ -2,7 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Animated,
     Dimensions,
@@ -123,8 +123,15 @@ export default function EventCard({ event, index }: EventCardProps) {
         if (success) {
           setIsRSVPed(false);
           toast.success('RSVP cancelled');
-          // Optimistically update the attendee count
-          event.attendingCount = Math.max(0, event.attendingCount - 1);
+          
+          // Update the attendee count by fetching the current count
+          const newCount = await eventService.getAttendeeCount(event.id);
+          event.attendingCount = newCount;
+          
+          // Remove user's avatar from the attending friends list
+          const userAvatar = user.avatarUrl || 
+            `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id.slice(0, 8)}`;
+          event.attendingFriends = event.attendingFriends.filter(avatar => avatar !== userAvatar);
         } else {
           toast.error('Failed to cancel RSVP');
         }
@@ -138,8 +145,15 @@ export default function EventCard({ event, index }: EventCardProps) {
         if (success) {
           setIsRSVPed(true);
           toast.success('You\'re going! 🎉');
-          // Optimistically update the attendee count
-          event.attendingCount += 1;
+          
+          // Update the attendee count by fetching the current count
+          const newCount = await eventService.getAttendeeCount(event.id);
+          event.attendingCount = newCount;
+          
+          // Add user's avatar to the attending friends list if not already there
+          if (!event.attendingFriends.includes(avatarUrl)) {
+            event.attendingFriends = [avatarUrl, ...event.attendingFriends].slice(0, 5);
+          }
         } else {
           toast.error('Failed to RSVP');
         }

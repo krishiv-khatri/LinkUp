@@ -1,10 +1,15 @@
+import ProfileEditModal from '@/components/ProfileEditModal';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+    Alert,
     Animated,
     Dimensions,
     Image,
+    Linking,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -18,42 +23,56 @@ import { toast } from 'sonner-native';
 
 const { width } = Dimensions.get('window');
 
-const mockUpcomingEvents = [
-  {
-    id: '1',
-    title: 'Chillhop Night',
-    date: 'W',
-    time: '9:00 PM',
-    location: 'Central',
-    status: 'confirmed',
-  },
-  {
-    id: '2',
-    title: 'Art Gallery Opening',
-    date: 'Sat',
-    time: '7:00 PM',
-    location: 'Sheung Wan',
-    status: 'maybe',
-  },
-  {
-    id: '3',
-    title: 'Rooftop Rave',
-    date: 'Sun',
-    time: '11:00 PM',
-    location: 'TST',
-    status: 'confirmed',
-  },
-];
+interface UserEvent {
+  id: string;
+  title: string;
+  time: string;
+  location: string;
+  category: string;
+  created_at: string;
+}
 
-const socialPlatforms = [
-  { name: 'Instagram', handle: 'alice.k.me', icon: 'logo-instagram', color: '#E4405F' },
-  { name: 'TikTok', handle: 'alicekfm', icon: 'musical-notes', color: '#FF0050' },
-  { name: 'Twitter', handle: '@aliceking', icon: 'logo-twitter', color: '#1DA1F2' },
-];
+interface SocialPlatform {
+  name: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  baseUrl: string;
+}
+
+const socialPlatforms: Record<string, SocialPlatform> = {
+  instagram: {
+    name: 'Instagram',
+    icon: 'logo-instagram',
+    color: '#E4405F',
+    baseUrl: 'https://instagram.com/',
+  },
+  tiktok: {
+    name: 'TikTok',
+    icon: 'logo-tiktok',
+    color: '#FF0050',
+    baseUrl: 'https://tiktok.com/@',
+  },
+  twitter: {
+    name: 'Twitter',
+    icon: 'logo-twitter',
+    color: '#1DA1F2',
+    baseUrl: 'https://twitter.com/',
+  },
+  snapchat: {
+    name: 'Snapchat',
+    icon: 'logo-snapchat',
+    color: '#FFFC00',
+    baseUrl: 'https://snapchat.com/add/',
+  },
+};
 
 export default function ProfileScreen() {
+  const { user, updateProfile, signOut } = useAuth();
   const [isOutOfTown, setIsOutOfTown] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null); // Added type for selectedPlan
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const profileRingAnim = useRef(new Animated.Value(0)).current;
 
@@ -79,20 +98,186 @@ export default function ProfileScreen() {
         }),
       ])
     ).start();
-  }, []);
+
+    // Initialize user settings
+    if (user) {
+      setIsOutOfTown(user.isOutOfTown || false);
+      fetchUserEvents();
+    }
+  }, [user]);
+
+  const fetchUserEvents = async () => {
+    if (!user) return;
+
+    try {
+      // Get events the user is attending
+      const { data: attendeeData, error: attendeeError } = await supabase
+        .from('attendees')
+        .select('event_id')
+        .eq('user_id', user.id);
+
+      if (attendeeError) {
+        console.error('Error fetching user attendees:', attendeeError);
+        return;
+      }
+
+      if (attendeeData && attendeeData.length > 0) {
+        const eventIds = attendeeData.map(a => a.event_id);
+        
+        const { data: eventsData, error: eventsError } = await supabase
+          .from('events')
+          .select('id, title, time, location, category, created_at')
+          .in('id', eventIds)
+          .order('created_at', { ascending: false });
+
+        if (eventsError) {
+          console.error('Error fetching events:', eventsError);
+        } else {
+          setUserEvents(eventsData || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEditProfile = () => {
-    toast.success('Profile editor coming soon! ✨');
+    setShowEditModal(true);
   };
 
   const handleShareProfile = () => {
-    toast.success('Profile link copied! 📋');
+    toast.success('Profile link copied to clipboard! 📋');
+  };
+
+  const handleOutOfTownToggle = async (value: boolean) => {
+    setIsOutOfTown(value);
+    if (user) {
+      const result = await updateProfile({ isOutOfTown: value });
+      if (result.success) {
+        toast.success(value ? 'You\'re now marked as out of town' : 'Welcome back! You\'re now available');
+      } else {
+        toast.error('Could not update your status. Please try again.');
+        setIsOutOfTown(!value); // Revert on error
+      }
+    }
+  };
+
+  const handleSocialPress = (platform: string, handle: string) => {
+    const socialPlatform = socialPlatforms[platform];
+    if (socialPlatform && handle) {
+      const url = `${socialPlatform.baseUrl}${handle}`;
+      Linking.openURL(url).catch(() => {
+        toast.error(`Unable to open ${socialPlatform.name}. Please check your internet connection.`);
+      });
+    }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out? You\'ll need to sign in again to access your profile and events.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              toast.success('You\'ve been signed out successfully');
+            } catch (error) {
+              console.error('Sign out error:', error);
+              toast.error('Something went wrong while signing out. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getEventStatusColor = (event: UserEvent) => {
+    const now = new Date();
+    const eventDate = new Date(event.created_at);
+    return eventDate > now ? '#00C853' : '#FF9800';
+  };
+
+  const formatEventTime = (timeString: string) => {
+    try {
+      const date = new Date(timeString);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      });
+    } catch {
+      return timeString;
+    }
+  };
+
+  const getDisplayName = () => {
+    if (user?.displayName) return user.displayName;
+    if (user?.username) return user.username;
+    if (user?.email) return user.email.split('@')[0];
+    return 'User';
+  };
+
+  const getAvatarUrl = () => {
+    if (user?.avatarUrl) return user.avatarUrl;
+    if (user?.email) {
+      return `https://api.a0.dev/assets/image?text=${user.email.slice(0, 1).toUpperCase()}&aspect=1:1&seed=${user.id.slice(0, 8)}`;
+    }
+    return 'https://api.a0.dev/assets/image?text=U&aspect=1:1&seed=default';
+  };
+
+  const getUserHandle = () => {
+    if (user?.username) return `@${user.username}`;
+    if (user?.email) return user.email.split('@')[0];
+    return 'User';
+  };
+
+  const getSocialHandles = (): (SocialPlatform & { platform: string; handle: string })[] => {
+    if (!user?.socialHandles) return [];
+    const handles: (SocialPlatform & { platform: string; handle: string })[] = [];
+    
+    Object.entries(user.socialHandles).forEach(([platform, handle]) => {
+      if (handle && typeof handle === 'string' && handle.trim() && socialPlatforms[platform]) {
+        handles.push({
+          platform,
+          handle: handle.trim(),
+          ...socialPlatforms[platform],
+        });
+      }
+    });
+    
+    return handles;
   };
 
   const ringOpacity = profileRingAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.5, 1],
   });
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.centerContent}>
+            <Text style={styles.errorText}>Please sign in to view your profile</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  const socialHandles = getSocialHandles();
 
   return (
     <View style={styles.container}>
@@ -112,17 +297,21 @@ export default function ProfileScreen() {
                 />
               </Animated.View>
               <Image 
-                source={{ uri: 'https://api.a0.dev/assets/image?text=stylish%20asian%20girl%20with%20trendy%20fashion&aspect=1:1&seed=30' }}
+                source={{ uri: getAvatarUrl() }}
                 style={styles.avatar}
               />
             </View>
             
-            <Text style={styles.profileName}>Alice King</Text>
+            <Text style={styles.profileName}>{getDisplayName()}</Text>
             
             <View style={styles.socialHandles}>
-              <Text style={styles.socialHandle}>alice.k.me</Text>
-              <Text style={styles.socialSeparator}>|</Text>
-              <Text style={styles.socialHandle}>alicekfm</Text>
+              <Text style={styles.socialHandle}>{getUserHandle()}</Text>
+              {user.email && (
+                <>
+                  <Text style={styles.socialSeparator}>|</Text>
+                  <Text style={styles.socialHandle}>{user.email}</Text>
+                </>
+              )}
             </View>
 
             <View style={styles.profileActions}>
@@ -148,64 +337,78 @@ export default function ProfileScreen() {
             </View>
           </Animated.View>
 
+          {socialHandles.length > 0 && (
+            <Animated.View style={[styles.socialsSection, { opacity: fadeAnim }]}>
+              <Text style={styles.sectionTitle}>Socials</Text>
+              
+              <View style={styles.socialsContainer}>
+                {socialHandles.map((social, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.socialItem}
+                    onPress={() => handleSocialPress(social.platform, social.handle)}
+                  >
+                    <View style={styles.socialInfo}>
+                      <View style={[styles.socialIcon, { backgroundColor: social.color }]}>
+                        <Ionicons name={social.icon} size={20} color="white" />
+                      </View>
+                      <View style={styles.socialTextContainer}>
+                        <Text style={styles.socialPlatformName}>{social.name}</Text>
+                        <Text style={styles.socialPlatformHandle}>@{social.handle}</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#666" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Animated.View>
+          )}
+
           <Animated.View style={[styles.plansSection, { opacity: fadeAnim }]}>
             <Text style={styles.sectionTitle}>Your Plans</Text>
             
             <View style={styles.plansContainer}>
-              {mockUpcomingEvents.map((event, index) => (
-                <TouchableOpacity
-                  key={event.id}
-                  style={[
-                    styles.planCard,
-                    selectedPlan === event.id && styles.selectedPlanCard
-                  ]}
-                  onPress={() => setSelectedPlan(selectedPlan === event.id ? null : event.id)}
-                >
-                  <LinearGradient
-                    colors={(
-                      selectedPlan === event.id 
-                        ? ['#FF006E', '#8338EC'] 
-                        : ['transparent', 'transparent']
-                    ) as any} // Added type assertion
-                    style={styles.planCardGradient}
+              {loading ? (
+                <Text style={styles.loadingText}>Loading your events...</Text>
+              ) : userEvents.length === 0 ? (
+                <Text style={styles.emptyText}>No upcoming events. Start exploring!</Text>
+              ) : (
+                userEvents.map((event, index) => (
+                  <TouchableOpacity
+                    key={event.id}
+                    style={[
+                      styles.planCard,
+                      selectedPlan === event.id && styles.selectedPlanCard
+                    ]}
+                    onPress={() => setSelectedPlan(selectedPlan === event.id ? null : event.id)}
                   >
-                    <View style={styles.planCardContent}>
-                      <View style={styles.planInfo}>
-                        <Text style={styles.planTitle}>{event.title}</Text>
-                        <Text style={styles.planDetails}>
-                          {event.date} • {event.time} • {event.location}
-                        </Text>
+                    <LinearGradient
+                      colors={(
+                        selectedPlan === event.id 
+                          ? ['#FF006E', '#8338EC'] 
+                          : ['transparent', 'transparent']
+                      ) as any}
+                      style={styles.planCardGradient}
+                    >
+                      <View style={styles.planCardContent}>
+                        <View style={styles.planInfo}>
+                          <Text style={styles.planTitle}>{event.title}</Text>
+                          <Text style={styles.planDetails}>
+                            {formatEventTime(event.time)} • {event.location}
+                          </Text>
+                        </View>
+                        
+                        <View style={styles.planStatus}>
+                          <View style={[
+                            styles.statusDot, 
+                            { backgroundColor: getEventStatusColor(event) }
+                          ]} />
+                        </View>
                       </View>
-                      
-                      <View style={styles.planStatus}>
-                        <View style={[
-                          styles.statusDot, 
-                          { backgroundColor: event.status === 'confirmed' ? '#00C853' : '#FF9800' }
-                        ]} />
-                      </View>
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Animated.View>
-
-          <Animated.View style={[styles.socialSection, { opacity: fadeAnim }]}>
-            <Text style={styles.sectionTitle}>Social</Text>
-            
-            <View style={styles.socialPlatforms}>
-              {socialPlatforms.map((platform, index) => (
-                <TouchableOpacity key={platform.name} style={styles.socialPlatform}>
-                  <View style={[styles.socialIcon, { backgroundColor: platform.color }]}>
-                    <Ionicons name={platform.icon as any} size={20} color="white" />
-                  </View>
-                  <View style={styles.socialInfo}>
-                    <Text style={styles.socialPlatformName}>{platform.name}</Text>
-                    <Text style={styles.socialPlatformHandle}>{platform.handle}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#666" />
-                </TouchableOpacity>
-              ))}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </Animated.View>
 
@@ -222,7 +425,7 @@ export default function ProfileScreen() {
                 </View>
                 <Switch
                   value={isOutOfTown}
-                  onValueChange={setIsOutOfTown}
+                  onValueChange={handleOutOfTownToggle}
                   trackColor={{ false: '#333', true: '#FF006E' }}
                   thumbColor={isOutOfTown ? '#FFFFFF' : '#666'}
                 />
@@ -247,12 +450,29 @@ export default function ProfileScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#666" />
               </TouchableOpacity>
+
+              <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
+                <View style={styles.settingInfo}>
+                  <Text style={[styles.settingTitle, styles.signOutText]}>Sign Out</Text>
+                  <Text style={styles.settingDescription}>
+                    Sign out of your account
+                  </Text>
+                </View>
+                <Ionicons name="log-out-outline" size={20} color="#FF006E" />
+              </TouchableOpacity>
             </View>
           </Animated.View>
-
-          <View style={styles.bottomSpacing} />
         </ScrollView>
       </SafeAreaView>
+      
+      <ProfileEditModal
+        visible={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onSave={() => {
+          toast.success('Profile updated successfully!');
+          setShowEditModal(false);
+        }}
+      />
     </View>
   );
 }
@@ -269,12 +489,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingBottom: 100,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#888',
+    fontSize: 16,
+    textAlign: 'center',
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 30,
   },
   avatarContainer: {
     position: 'relative',
@@ -282,60 +513,61 @@ const styles = StyleSheet.create({
   },
   avatarRing: {
     position: 'absolute',
-    top: -6,
-    left: -6,
-    right: -6,
-    bottom: -6,
-    borderRadius: 70,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    top: -5,
+    left: -5,
+    zIndex: 1,
   },
   avatarGradient: {
-    flex: 1,
-    borderRadius: 70,
+    width: '100%',
+    height: '100%',
+    borderRadius: 55,
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 4,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
     borderColor: '#0A0A0A',
+    zIndex: 2,
   },
   profileName: {
     fontSize: 28,
-    fontWeight: '700',
-    color: 'white',
+    fontWeight: 'bold',
+    color: '#FFFFFF',
     marginBottom: 8,
-    fontFamily: 'System',
+    textAlign: 'center',
   },
   socialHandles: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    gap: 8,
+    marginBottom: 30,
   },
   socialHandle: {
-    fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    color: '#888',
+    fontSize: 14,
   },
   socialSeparator: {
-    fontSize: 16,
-    color: '#333',
+    color: '#444',
+    marginHorizontal: 8,
   },
   profileActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   editButton: {
-    borderRadius: 20,
+    borderRadius: 25,
     overflow: 'hidden',
   },
   editButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 6,
   },
   editButtonText: {
     color: 'white',
@@ -347,21 +579,74 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     backgroundColor: '#1A1A1A',
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  socialsContainer: {
+    gap: 12,
+  },
+  socialItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+  },
+  socialInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  socialIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  socialTextContainer: {
+    flex: 1,
+  },
+  socialPlatformName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  socialPlatformHandle: {
+    fontSize: 14,
+    color: '#888',
   },
   plansSection: {
-    marginBottom: 40,
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
   sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: 'white',
-    marginBottom: 20,
-    fontFamily: 'System',
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 16,
   },
   plansContainer: {
     gap: 12,
+  },
+  loadingText: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  emptyText: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
   },
   planCard: {
     borderRadius: 16,
@@ -369,26 +654,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
   },
   selectedPlanCard: {
-    backgroundColor: 'transparent',
+    transform: [{ scale: 1.02 }],
   },
   planCardGradient: {
-    padding: 2,
+    padding: 1,
   },
   planCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 14,
     padding: 16,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
   },
   planInfo: {
     flex: 1,
   },
   planTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: 'white',
+    color: '#FFFFFF',
     marginBottom: 4,
   },
   planDetails: {
@@ -399,57 +684,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  socialSection: {
-    marginBottom: 40,
-  },
-  socialPlatforms: {
-    gap: 16,
-  },
-  socialPlatform: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    padding: 16,
-  },
-  socialIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  socialInfo: {
-    flex: 1,
-  },
-  socialPlatformName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-    marginBottom: 2,
-  },
-  socialPlatformHandle: {
-    fontSize: 14,
-    color: '#666',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   settingsSection: {
-    marginBottom: 40,
+    paddingHorizontal: 20,
+    marginBottom: 30,
   },
   settingsContainer: {
-    gap: 16,
+    gap: 12,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    padding: 16,
     backgroundColor: '#1A1A1A',
     borderRadius: 16,
-    padding: 16,
   },
   settingInfo: {
     flex: 1,
@@ -457,14 +709,14 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'white',
-    marginBottom: 4,
+    color: '#FFFFFF',
+    marginBottom: 2,
   },
   settingDescription: {
     fontSize: 14,
-    color: '#666',
+    color: '#888',
   },
-  bottomSpacing: {
-    height: 100,
+  signOutText: {
+    color: '#FF006E',
   },
 }); 
