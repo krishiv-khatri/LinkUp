@@ -1,105 +1,53 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
-    Animated,
-    Dimensions,
-    Image,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { toast } from 'sonner-native';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import {
+  getFriendsList
+} from '../../services/friendService';
 
 const { width } = Dimensions.get('window');
 
-const mockFriends = [
-  {
-    id: '1',
-    name: 'Charlotte',
-    username: '@charlotte_hk',
-    avatar: 'https://api.a0.dev/assets/image?text=stylish%20asian%20girl%20with%20wavy%20hair&aspect=1:1&seed=21',
-    status: 'Going to Clockenflap',
-    statusType: 'event',
-    isOnline: true,
-    mutualFriends: 12,
-  },
-  {
-    id: '2',
-    name: 'Alex',
-    username: '@alexwong',
-    avatar: 'https://api.a0.dev/assets/image?text=cool%20guy%20with%20streetwear%20fashion&aspect=1:1&seed=22',
-    status: 'Flying to Tokyo',
-    statusType: 'travel',
-    isOnline: false,
-    mutualFriends: 8,
-  },
-  {
-    id: '3',
-    name: 'Rachel',
-    username: '@rachellim',
-    avatar: 'https://api.a0.dev/assets/image?text=girl%20with%20artistic%20style%20and%20glasses&aspect=1:1&seed=23',
-    status: 'Online',
-    statusType: 'online',
-    isOnline: true,
-    mutualFriends: 15,
-  },
-  {
-    id: '4',
-    name: 'Eric',
-    username: '@ericc',
-    avatar: 'https://api.a0.dev/assets/image?text=casual%20guy%20with%20hoodie&aspect=1:1&seed=24',
-    status: 'At Home',
-    statusType: 'location',
-    isOnline: true,
-    mutualFriends: 6,
-  },
-  {
-    id: '5',
-    name: 'Maya',
-    username: '@mayaaa',
-    avatar: 'https://api.a0.dev/assets/image?text=trendy%20girl%20with%20colorful%20hair&aspect=1:1&seed=25',
-    status: 'Neon Party',
-    statusType: 'event',
-    isOnline: true,
-    mutualFriends: 20,
-  },
-  {
-    id: '6',
-    name: 'Kevin',
-    username: '@kevincho',
-    avatar: 'https://api.a0.dev/assets/image?text=guy%20with%20designer%20jacket&aspect=1:1&seed=26',
-    status: 'At Home',
-    statusType: 'location',
-    isOnline: false,
-    mutualFriends: 9,
-  },
-];
+// Types for friend
+interface Profile {
+  id: string;
+  username?: string;
+  display_name?: string;
+  avatar_url?: string;
+}
 
-const getStatusGradient = (statusType: string) => {
-  switch (statusType) {
-    case 'event':
-      return ['#FF006E', '#8338EC'];
-    case 'travel':
-      return ['#FF6B35', '#F7931E'];
-    case 'online':
-      return ['#00C853', '#4CAF50'];
-    case 'location':
-      return ['#8338EC', '#3A86FF'];
-    default:
-      return ['#666', '#888'];
-  }
-};
+interface Friend {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  sender?: Profile;
+  receiver?: Profile;
+}
 
 export default function FriendsScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [friends, setFriends] = useState(mockFriends);
+  const { user, isLoading: authLoading } = useAuth();
+  const [friends, setFriends] = useState<Friend[]>([]); // accepted friends
+  const [searchQueryFriends, setSearchQueryFriends] = useState(''); // search in friends
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const router = useRouter();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -109,115 +57,162 @@ export default function FriendsScreen() {
     }).start();
   }, []);
 
-  const filteredFriends = friends.filter(friend =>
-    friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    friend.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Fetch friends on mount (when user is loaded)
+  useEffect(() => {
+    if (!user || authLoading) return;
+    setLoadingFriends(true);
+    setError(null);
+    getFriendsList(user.id)
+      .then(({ data, error }) => {
+        if (error) setError(error.message);
+        else setFriends(data || []);
+      })
+      .finally(() => setLoadingFriends(false));
+  }, [user, authLoading]);
 
-  const handleAddFriend = (friendId: string) => {
-    toast.success('Friend added! 🎉');
+  // Filter friends by search
+  const filteredFriends = friends.filter(friend => {
+    const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+    const name = profile?.display_name || '';
+    const username = profile?.username || '';
+    return (
+      name.toLowerCase().includes(searchQueryFriends.toLowerCase()) ||
+      username.toLowerCase().includes(searchQueryFriends.toLowerCase())
+    );
+  });
+
+  // Remove friend handler (optional, if you want to keep this feature)
+  const handleRemoveFriend = async (friend: Friend) => {
+    if (!user) return;
+    setLoadingFriends(true);
+    // Friendship can be in either direction
+    await supabase.from('friends').delete().eq('id', friend.id).eq('status', 'accepted');
+    // Refetch friends
+    getFriendsList(user.id)
+      .then(({ data }) => setFriends(data || []))
+      .finally(() => setLoadingFriends(false));
   };
+
+  useEffect(() => {
+    if (!user) return;
+    // Subscribe to changes in the friends table
+    const channel = supabase
+      .channel('public:friends')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friends',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          getFriendsList(user.id).then(({ data }) => setFriends(data || []));
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friends',
+          filter: `friend_id=eq.${user.id}`,
+        },
+        (payload) => {
+          getFriendsList(user.id).then(({ data }) => setFriends(data || []));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
-          <Text style={styles.headerTitle}>Friends</Text>
-          <TouchableOpacity style={styles.searchButton}>
-            <Ionicons name="search" size={24} color="white" />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Ionicons name="search" size={18} color="#666" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search friends..."
-              placeholderTextColor="#666"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle}>Friends</Text>
+              {/* Optionally add a subtitle here, e.g.: */}
+              {/* <Text style={styles.headerSubtitle}>Your connections on LinkUp</Text> */}
+            </View>
+            <TouchableOpacity style={styles.headerIconButton} onPress={() => router.push('/addfriends')}>
+              <Ionicons name="person-add" size={28} color="white" />
+            </TouchableOpacity>
           </View>
-        </View>
-
-        <ScrollView 
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}>
-            {filteredFriends.map((friend, index) => (
-              <TouchableOpacity
-                key={friend.id}
-                style={styles.friendCard}
-                activeOpacity={0.8}
-              >
-                <View style={styles.friendInfo}>
-                  <View style={styles.avatarContainer}>
-                    <Image source={{ uri: friend.avatar }} style={styles.avatar} />
-                    {friend.isOnline && (
-                      <LinearGradient
-                        colors={getStatusGradient(friend.statusType) as any}
-                        style={styles.onlineIndicator}
-                      />
-                    )}
-                  </View>
-                  
-                  <View style={styles.friendDetails}>
-                    <Text style={styles.friendName}>{friend.name}</Text>
-                    <Text style={styles.friendUsername}>{friend.username}</Text>
-                    <View style={styles.statusContainer}>
-                      <LinearGradient
-                        colors={getStatusGradient(friend.statusType) as any}
-                        style={styles.statusDot}
-                      />
-                      <Text style={styles.friendStatus}>{friend.status}</Text>
+          <View style={styles.searchContainer}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={18} color="#666" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search friends..."
+                placeholderTextColor="#666"
+                value={searchQueryFriends}
+                onChangeText={setSearchQueryFriends}
+              />
+            </View>
+          </View>
+          {loadingFriends ? (
+            <Text style={{ color: 'white', paddingHorizontal: 20 }}>Loading friends...</Text>
+          ) : (
+            <ScrollView
+              style={styles.scrollView}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}> 
+                {filteredFriends.map((friend) => {
+                  const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+                  return (
+                    <View key={friend.id} style={styles.friendCard}>
+                      <View style={styles.friendInfo}>
+                        {profile?.avatar_url ? (
+                          <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                        ) : (
+                          <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                            <Ionicons name="person" size={28} color="#888" />
+                          </View>
+                        )}
+                        <View style={styles.friendDetails}>
+                          <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
+                          <Text style={styles.friendUsername}>@{profile?.username}</Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity onPress={() => handleRemoveFriend(friend)} style={styles.addButton}>
+                        <LinearGradient colors={['#FF1744', '#FF6B6B']} style={styles.addButtonGradient}>
+                          <Ionicons name="person-remove" size={16} color="white" />
+                        </LinearGradient>
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.mutualFriends}>
-                      {friend.mutualFriends} mutual friends
-                    </Text>
-                  </View>
+                  );
+                })}
+              </Animated.View>
+              <View style={styles.planningSection}>
+                <View style={styles.planningSectionHeader}>
+                  <Text style={styles.planningSectionTitle}>PLANNING</Text>
                 </View>
-
-                <TouchableOpacity
-                  style={styles.addButton}
-                  onPress={() => handleAddFriend(friend.id)}
-                >
+                <View style={styles.planningCard}>
                   <LinearGradient
-                    colors={['#FF006E', '#8338EC']}
-                    style={styles.addButtonGradient}
+                    colors={['#8338EC', '#FF006E']}
+                    style={styles.planningGradient}
                   >
-                    <Ionicons name="person-add" size={16} color="white" />
+                    <View style={styles.planningContent}>
+                      <Text style={styles.planningTitle}>Chillhop Night</Text>
+                      <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
+                      <Text style={styles.planningLocation}>Central</Text>
+                    </View>
                   </LinearGradient>
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
-
-          <View style={styles.planningSection}>
-            <View style={styles.planningSectionHeader}>
-              <Text style={styles.planningSectionTitle}>PLANNING</Text>
-            </View>
-            
-            <View style={styles.planningCard}>
-              <LinearGradient
-                colors={['#8338EC', '#FF006E']}
-                style={styles.planningGradient}
-              >
-                <View style={styles.planningContent}>
-                  <Text style={styles.planningTitle}>Chillhop Night</Text>
-                  <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
-                  <Text style={styles.planningLocation}>Central</Text>
                 </View>
-              </LinearGradient>
-            </View>
-          </View>
-
-          <View style={styles.bottomSpacing} />
-        </ScrollView>
-      </SafeAreaView>
+              </View>
+              <View style={styles.bottomSpacing} />
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Animated.View>
     </View>
   );
 }
@@ -230,12 +225,13 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 20, // match index tab
   },
   headerTitle: {
     fontSize: 32,
@@ -243,13 +239,23 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: 'white',
     fontFamily: 'Georgia',
+    letterSpacing: -0.5,
+    marginBottom: 0,
   },
-  searchButton: {
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: '400',
+    letterSpacing: 0.2,
+  },
+  headerIconButton: {
     padding: 8,
+    marginLeft: 8,
   },
   searchContainer: {
     paddingHorizontal: 20,
-    marginBottom: 24,
+    marginTop: 0,
+    marginBottom: 24, // match index tab
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -288,24 +294,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 16,
-  },
   avatar: {
     width: 60,
     height: 60,
     borderRadius: 30,
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#1A1A1A',
   },
   friendDetails: {
     flex: 1,
@@ -320,26 +312,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 8,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  friendStatus: {
-    fontSize: 14,
-    color: '#CCC',
-    fontWeight: '500',
-  },
-  mutualFriends: {
-    fontSize: 12,
-    color: '#666',
   },
   addButton: {
     borderRadius: 20,

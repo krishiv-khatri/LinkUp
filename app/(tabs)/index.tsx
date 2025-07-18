@@ -6,15 +6,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Dimensions,
-    RefreshControl,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,6 +26,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const scrollY = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 100],
@@ -49,6 +50,14 @@ export default function HomeScreen() {
     setLoading(true);
     fetchEvents();
   }, []);
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 800,
+      useNativeDriver: true,
+    }).start();
+  }, []);
   
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -70,77 +79,79 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-          <Text style={styles.headerTitle}>Right Now</Text>
-          <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
-        </Animated.View>
+      <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+        <SafeAreaView style={styles.safeArea}>
+          <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+            <Text style={styles.headerTitle}>Right Now</Text>
+            <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
+          </Animated.View>
 
-        <FilterBar
-          selectedFilter={selectedFilter}
-          onFilterChange={setSelectedFilter}
-        />
+          <FilterBar
+            selectedFilter={selectedFilter}
+            onFilterChange={setSelectedFilter}
+          />
 
-        <Animated.ScrollView
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            { useNativeDriver: false }
-          )}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#888888"
-              colors={["#888888"]}
-              progressBackgroundColor="#1A1A1A"
-            />
-          }
-        >
-          {loading && !refreshing ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#FF006E" />
-              <Text style={styles.loadingText}>Loading events...</Text>
-            </View>
-          ) : filteredEvents.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="calendar-outline" size={60} color="#666" />
-              <Text style={styles.emptyText}>No events found</Text>
-              <Text style={styles.emptySubtext}>Check back later for upcoming events</Text>
-            </View>
-          ) : (
-            <View style={styles.eventsContainer}>
-              {filteredEvents.map((event, index) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  index={index}
-                />
-              ))}
-            </View>
-          )}
-          <View style={styles.bottomSpacing} />
-        </Animated.ScrollView>
-        
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={handleCreateEvent}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={['#FF006E', '#8338EC']}
-            style={styles.fabGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+          <Animated.ScrollView
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#888888"
+                colors={["#888888"]}
+                progressBackgroundColor="#1A1A1A"
+              />
+            }
           >
-            <View style={styles.plusIconContainer}>
-              <Ionicons name="add" size={32} color="white" />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-      </SafeAreaView>
+            {loading && !refreshing ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#FF006E" />
+                <Text style={styles.loadingText}>Loading events...</Text>
+              </View>
+            ) : filteredEvents.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="calendar-outline" size={60} color="#666" />
+                <Text style={styles.emptyText}>No events found</Text>
+                <Text style={styles.emptySubtext}>Check back later for upcoming events</Text>
+              </View>
+            ) : (
+              <View style={styles.eventsContainer}>
+                {filteredEvents.map((event, index) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    index={index}
+                  />
+                ))}
+              </View>
+            )}
+            <View style={styles.bottomSpacing} />
+          </Animated.ScrollView>
+          
+          <TouchableOpacity
+            style={styles.fab}
+            onPress={handleCreateEvent}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#FF006E', '#8338EC']}
+              style={styles.fabGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.plusIconContainer}>
+                <Ionicons name="add" size={32} color="white" />
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Animated.View>
     </View>
   );
 }
@@ -155,7 +166,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 24,
-    paddingTop: 8,
+    paddingTop: 14,
     paddingBottom: 4,
   },
   headerTitle: {
