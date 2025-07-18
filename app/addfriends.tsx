@@ -362,6 +362,7 @@ const styles = StyleSheet.create({
   },
   friendDetails: {
     flex: 1,
+    marginLeft: 16,
   },
   friendName: {
     fontSize: 18,

@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import FriendProfileModal from '../../components/FriendProfileModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
@@ -48,6 +49,8 @@ export default function FriendsScreen() {
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
+  const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -157,7 +160,7 @@ export default function FriendsScreen() {
             </View>
           </View>
           {loadingFriends ? (
-            <Text style={{ color: 'white', paddingHorizontal: 20 }}>Loading friends...</Text>
+            <Text style={{ color: 'white', paddingHorizontal: 20 }}></Text>
           ) : (
             <ScrollView
               style={styles.scrollView}
@@ -168,7 +171,15 @@ export default function FriendsScreen() {
                 {filteredFriends.map((friend) => {
                   const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
                   return (
-                    <View key={friend.id} style={styles.friendCard}>
+                    <TouchableOpacity
+                      key={friend.id}
+                      style={styles.friendCard}
+                      activeOpacity={0.8}
+                      onPress={() => {
+                        setSelectedFriend(profile ?? null);
+                        setModalVisible(true);
+                      }}
+                    >
                       <View style={styles.friendInfo}>
                         {profile?.avatar_url ? (
                           <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
@@ -187,7 +198,7 @@ export default function FriendsScreen() {
                           <Ionicons name="person-remove" size={16} color="white" />
                         </LinearGradient>
                       </TouchableOpacity>
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </Animated.View>
@@ -211,6 +222,11 @@ export default function FriendsScreen() {
               <View style={styles.bottomSpacing} />
             </ScrollView>
           )}
+          <FriendProfileModal
+            visible={modalVisible}
+            friend={selectedFriend}
+            onClose={() => setModalVisible(false)}
+          />
         </SafeAreaView>
       </Animated.View>
     </View>
@@ -301,6 +317,7 @@ const styles = StyleSheet.create({
   },
   friendDetails: {
     flex: 1,
+    marginLeft: 16,
   },
   friendName: {
     fontSize: 18,

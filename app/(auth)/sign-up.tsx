@@ -6,13 +6,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   wave: {
-    position: 'absolute',
+    top: 80,
     bottom: 0,
     left: 0,
     right: 0,
