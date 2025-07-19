@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Animated,
     Image,
     StatusBar,
@@ -11,7 +12,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -20,7 +21,9 @@ import { supabase } from '../lib/supabase';
 import {
     acceptFriendRequest,
     declineFriendRequest,
+    getFriendsList,
     getIncomingFriendRequests,
+    getOutgoingFriendRequests,
     searchUsers,
     sendFriendRequest
 } from '../services/friendService';
@@ -42,12 +45,14 @@ interface Friend {
   receiver?: Profile;
 }
 
+// Update FriendRequest to optionally include receiver for outgoing requests
 interface FriendRequest {
   id: string;
   user_id: string;
   friend_id: string;
   status: string;
   sender?: Profile;
+  receiver?: Profile; // <-- add this
 }
 
 export default function AddFriendsScreen() {
@@ -56,12 +61,22 @@ export default function AddFriendsScreen() {
 
   // State for friend requests and add friends
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]); // incoming requests
+  const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]); // outgoing requests
+  const [friends, setFriends] = useState<Friend[]>([]); // accepted friends
   const [searchQueryAdd, setSearchQueryAdd] = useState(''); // search for new friends
   const [addFriendResults, setAddFriendResults] = useState<Profile[]>([]); // search results for add friends
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [loadingAddSearch, setLoadingAddSearch] = useState(false);
+  const [showSpinner, setShowSpinner] = useState(false); // for minimum spinner duration
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Combine incoming and outgoing pending requests for dropdown
+  const pendingRequests = [
+    ...friendRequests.map(r => ({ ...r, type: 'incoming' as const })),
+    ...outgoingRequests.map(r => ({ ...r, type: 'outgoing' as const })),
+  ];
 
   // Fetch friend requests on mount (when user is loaded)
   useEffect(() => {
@@ -72,33 +87,58 @@ export default function AddFriendsScreen() {
       .then(({ data, error }) => {
         if (error) setError(error.message);
         else setFriendRequests(data || []);
-        // Debug log
       })
       .finally(() => setLoadingRequests(false));
+    // Fetch outgoing requests
+    getOutgoingFriendRequests(user.id)
+      .then(({ data }) => setOutgoingRequests(data || []));
   }, [user, authLoading]);
 
-  // Add Friends search effect
+  // Fetch friends on mount
   useEffect(() => {
-    if (!user || !searchQueryAdd.trim()) {
+    if (!user) return;
+    getFriendsList(user.id).then(({ data }) => setFriends(data || []));
+  }, [user]);
+
+  // Add this function inside your component
+  const runAddFriendSearch = (query: string, friendsList: Friend[], incoming: FriendRequest[], outgoing: FriendRequest[]) => {
+    if (!user || !query.trim()) {
       setAddFriendResults([]);
+      setShowSpinner(false);
       return;
     }
     setLoadingAddSearch(true);
+    setShowSpinner(true);
     setError(null);
-    // Collect IDs to exclude: current user, already friends, pending requests
-    // For this screen, we only exclude the current user and pending requests
+    const minLoading = new Promise(resolve => setTimeout(resolve, 1000));
     const excludeIds = [user.id];
-    friendRequests.forEach(r => {
+    friendsList.forEach(f => {
+      excludeIds.push(f.user_id);
+      excludeIds.push(f.friend_id);
+    });
+    incoming.forEach(r => {
       excludeIds.push(r.user_id);
       excludeIds.push(r.friend_id);
     });
-    searchUsers(searchQueryAdd, user.id, Array.from(new Set(excludeIds)))
-      .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setAddFriendResults(data || []);
-      })
-      .finally(() => setLoadingAddSearch(false));
-  }, [searchQueryAdd, user, friendRequests]);
+    outgoing.forEach(r => {
+      excludeIds.push(r.user_id);
+      excludeIds.push(r.friend_id);
+    });
+    Promise.all([
+      searchUsers(query, user.id, Array.from(new Set(excludeIds))),
+      minLoading
+    ]).then(([{ data, error }]) => {
+      if (error) setError(error.message);
+      else setAddFriendResults(data || []);
+      setShowSpinner(false);
+    }).finally(() => setLoadingAddSearch(false));
+  };
+
+  // Add Friends search effect
+  useEffect(() => {
+    runAddFriendSearch(searchQueryAdd, friends, friendRequests, outgoingRequests);
+    // eslint-disable-next-line
+  }, [searchQueryAdd, user, friends, friendRequests, outgoingRequests]);
 
   // Add friend handler (with edge case handling)
   const handleAddFriend = async (targetUserId: string) => {
@@ -118,12 +158,12 @@ export default function AddFriendsScreen() {
         }
       } else {
         toast.success('Friend request sent!');
-        setAddFriendResults(prev => prev.filter(p => p.id !== targetUserId));
-        // Optionally, refetch requests
-        setLoadingRequests(true);
-        getIncomingFriendRequests(user.id)
-          .then(({ data }) => setFriendRequests(data || []))
-          .finally(() => setLoadingRequests(false));
+        // Instantly refetch outgoing requests for real-time UI update
+        getOutgoingFriendRequests(user.id).then(({ data }) => {
+          setOutgoingRequests(data || []);
+          // Run the search again with the latest outgoing requests
+          runAddFriendSearch(searchQueryAdd, friends, friendRequests, data || []);
+        });
       }
     } finally {
       setLoadingAddSearch(false);
@@ -161,6 +201,7 @@ export default function AddFriendsScreen() {
     // Subscribe to changes in the friends table
     const channel: RealtimeChannel = supabase
       .channel('public:friends')
+      // Outgoing requests (you are the sender)
       .on(
         'postgres_changes',
         {
@@ -169,10 +210,11 @@ export default function AddFriendsScreen() {
           table: 'friends',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
-          getIncomingFriendRequests(user.id).then(({ data }) => setFriendRequests(data || []));
+        () => {
+          getOutgoingFriendRequests(user.id).then(({ data }) => setOutgoingRequests(data || []));
         }
       )
+      // Incoming requests (you are the recipient)
       .on(
         'postgres_changes',
         {
@@ -181,7 +223,7 @@ export default function AddFriendsScreen() {
           table: 'friends',
           filter: `friend_id=eq.${user.id}`,
         },
-        (payload) => {
+        () => {
           getIncomingFriendRequests(user.id).then(({ data }) => setFriendRequests(data || []));
         }
       )
@@ -205,46 +247,74 @@ export default function AddFriendsScreen() {
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Add Friends</Text>
           </View>
-
-          {/* Friend Requests Section */}
-          {loadingRequests ? (
-            <Text style={{ color: 'white', paddingHorizontal: 20 }}>Loading friend requests...</Text>
-          ) : friendRequests.length > 0 ? (
-            <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
-              <Text style={{ color: '#666', fontWeight: '700', fontSize: 14, marginBottom: 8 }}>Friend Requests</Text>
-              {friendRequests.map((req) => (
-                <View key={req.id} style={[styles.friendCard, { marginBottom: 8 }]}> 
-                  <View style={styles.friendInfo}>
-                    {/* Patch: Only render Image if avatar_url exists, else render a placeholder */}
-                    {req.sender?.avatar_url ? (
-                      <Image source={{ uri: req.sender.avatar_url }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                        <Ionicons name="person" size={28} color="#888" />
-                      </View>
-                    )}
-                    <View style={styles.friendDetails}>
-                      {/* Patch: Always render a string in Text */}
-                      <Text style={styles.friendName}>{req.sender?.display_name || req.sender?.username || 'Unknown'}</Text>
-                      <Text style={styles.friendUsername}>@{req.sender?.username || ''}</Text>
+          {/* Pending Requests Dropdown */}
+          {pendingRequests.length > 0 && (
+            <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+                onPress={() => setDropdownOpen(open => !open)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                  {pendingRequests.length} Pending Request{pendingRequests.length > 1 ? 's' : ''}
+                </Text>
+              </TouchableOpacity>
+              {dropdownOpen && (
+                <View style={{ backgroundColor: '#181818', borderRadius: 12, marginTop: 4, padding: 8 }}>
+                  {pendingRequests.map((req) => (
+                    <View key={req.id + req.type} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      {req.type === 'incoming' ? (
+                        <>
+                          {req.sender?.avatar_url ? (
+                            <Image source={{ uri: req.sender.avatar_url }} style={styles.dropdownAvatar} />
+                          ) : (
+                            <View style={[styles.avatar, { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                              <Ionicons name="person" size={20} color="#888" />
+                            </View>
+                          )}
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ color: '#fff', fontWeight: '600' }}>{req.sender?.display_name || req.sender?.username || 'Unknown'}</Text>
+                            <Text style={{ color: '#888', fontSize: 13 }}>@{req.sender?.username || ''}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleAccept(req.id, req.sender?.id)} style={{ marginRight: 4 }}>
+                            <Ionicons name="checkmark-circle" size={22} color="#00C853" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDecline(req.id)}>
+                            <Ionicons name="close-circle" size={22} color="#FF1744" />
+                          </TouchableOpacity>
+                        </>
+                      ) : (
+                        <>
+                          {req.receiver?.avatar_url ? (
+                            <Image source={{ uri: req.receiver.avatar_url }} style={styles.dropdownAvatar} />
+                          ) : (
+                            <View style={[styles.dropdownAvatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                              <Ionicons name="person" size={20} color="#888" />
+                            </View>
+                          )}
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={{ color: '#fff', fontWeight: '600' }}>{req.receiver?.display_name || req.receiver?.username || 'Unknown'}</Text>
+                            <Text style={{ color: '#888', fontSize: 13 }}>@{req.receiver?.username || ''}</Text>
+                          </View>
+                          <TouchableOpacity onPress={async () => {
+                            // Cancel outgoing request
+                            await supabase.from('friends').delete().eq('id', req.id);
+                            // Instantly update state and rerun search
+                            const updatedOutgoing = outgoingRequests.filter(r => r.id !== req.id);
+                            setOutgoingRequests(updatedOutgoing);
+                            runAddFriendSearch(searchQueryAdd, friends, friendRequests, updatedOutgoing);
+                          }}>
+                            <Ionicons name="close-circle" size={22} color="#FF1744" right={20} />
+                          </TouchableOpacity>
+                        </>
+                      )}
                     </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity onPress={() => handleAccept(req.id, req.sender?.id)} style={styles.addButton}>
-                      <LinearGradient colors={['#00C853', '#4CAF50']} style={styles.addButtonGradient}>
-                        <Ionicons name="checkmark" size={16} color="white" />
-                      </LinearGradient>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleDecline(req.id)} style={styles.addButton}>
-                      <LinearGradient colors={['#FF1744', '#FF6B6B']} style={styles.addButtonGradient}>
-                        <Ionicons name="close" size={16} color="white" />
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  </View>
+                  ))}
                 </View>
-              ))}
+              )}
             </View>
-          ) : null}
+          )}
 
           {/* Add Friends Section */}
           <View style={[styles.searchContainer, (friendRequests.length > 0 || loadingRequests) ? { marginTop: 0 } : { marginTop: 0 }]}> 
@@ -259,8 +329,11 @@ export default function AddFriendsScreen() {
               />
             </View>
           </View>
-          {loadingAddSearch ? (
-            <Text style={{ color: 'white', paddingHorizontal: 20 }}>Searching...</Text>
+          {showSpinner ? (
+            <View style={styles.spinnerContainer}>
+              <Text style={styles.loadingText}>Loading...</Text>
+              <ActivityIndicator size="large" color="#FF006E" style={{ marginTop: 16 }} />
+            </View>
           ) : searchQueryAdd.trim() ? (
             <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
               {addFriendResults.length === 0 ? (
@@ -384,5 +457,23 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  spinnerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    bottom: 100,
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  dropdownAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
 }); 
