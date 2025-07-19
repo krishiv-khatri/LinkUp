@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, router } from 'expo-router';
-import { useState } from 'react';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -30,8 +30,9 @@ const CATEGORIES = [
   { id: 'food', label: 'Food', icon: 'restaurant' },
 ];
 
-export default function CreateEventScreen() {
+export default function EditEventScreen() {
   const { user } = useAuth();
+  const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('');
   const [date, setDate] = useState(new Date());
@@ -43,16 +44,46 @@ export default function CreateEventScreen() {
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (eventId) {
+      loadEventData();
+    }
+  }, [eventId]);
+
+  const loadEventData = async () => {
+    try {
+      const event = await eventService.getEventById(eventId);
+      if (event) {
+        setTitle(event.title);
+        setTime(event.time);
+        setDate(new Date(event.date));
+        setLocation(event.location);
+        setCategory(event.category);
+        setDescription(event.description);
+        setSelectedImage(event.coverImage);
+        setUploadedImageUrl(event.coverImage);
+      } else {
+        toast.error('Event not found');
+        router.back();
+      }
+    } catch (error) {
+      console.error('Error loading event:', error);
+      toast.error('Failed to load event');
+      router.back();
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const pickImage = async () => {
-    // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       toast.error('Permission to access camera roll is required!');
       return;
     }
 
-    // Show action sheet to choose between camera and gallery
     Alert.alert(
       'Select Image',
       'Choose how you want to select your cover image',
@@ -73,10 +104,7 @@ export default function CreateEventScreen() {
     });
 
     if (!result.canceled) {
-      // Set the local image immediately for preview
       setSelectedImage(result.assets[0].uri);
-      
-      // Upload in the background
       uploadImageToSupabase(result.assets[0].uri);
     }
   };
@@ -96,10 +124,7 @@ export default function CreateEventScreen() {
     });
 
     if (!result.canceled) {
-      // Set the local image immediately for preview
       setSelectedImage(result.assets[0].uri);
-      
-      // Upload in the background
       uploadImageToSupabase(result.assets[0].uri);
     }
   };
@@ -108,15 +133,12 @@ export default function CreateEventScreen() {
     try {
       setIsUploadingImage(true);
       
-      // Create a unique filename
       const fileExtension = imageUri.split('.').pop();
       const fileName = `event-${Date.now()}.${fileExtension}`;
       
-      // Convert image to blob
       const response = await fetch(imageUri);
       const blob = await response.blob();
       
-      // Upload to Supabase storage
       const { supabase } = await import('@/lib/supabase');
       const { data, error } = await supabase.storage
         .from('event-images')
@@ -131,14 +153,11 @@ export default function CreateEventScreen() {
         return null;
       }
       
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('event-images')
         .getPublicUrl(fileName);
       
-      // Store the uploaded URL
       setUploadedImageUrl(publicUrl);
-      
       return publicUrl;
     } catch (error) {
       console.error('Upload error:', error);
@@ -149,7 +168,7 @@ export default function CreateEventScreen() {
     }
   };
 
-  const handleCreateEvent = async () => {
+  const handleUpdateEvent = async () => {
     if (!title || !time || !location || !category || !description) {
       toast.error('Please fill in all required fields');
       return;
@@ -157,54 +176,35 @@ export default function CreateEventScreen() {
 
     setIsSubmitting(true);
     try {
-      // Use uploaded image URL or generate a default one
-      let imageUrl = `https://api.a0.dev/assets/image?text=${encodeURIComponent(title)}&aspect=16:9&seed=${Date.now()}`;
+      let imageUrl = uploadedImageUrl || selectedImage;
       
-      if (uploadedImageUrl) {
-        imageUrl = uploadedImageUrl;
-      } else if (selectedImage) {
-        // If image was selected but not uploaded yet, upload it now
+      if (selectedImage && !uploadedImageUrl) {
         const uploadedUrl = await uploadImageToSupabase(selectedImage);
         if (uploadedUrl) {
           imageUrl = uploadedUrl;
         }
       }
       
-      // Log the event data being sent for debugging
-      const eventData = {
+      const updates = {
         title,
         time,
-        date: date.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        date: date.toISOString().split('T')[0],
         location,
         category,
-        coverImage: imageUrl,
+        coverImage: imageUrl || '',
         description,
-        creator_id: user?.id || '', // Add creator_id
       };
       
-      console.log('Creating event with data:', eventData);
-      
-      const event = await eventService.createEvent(eventData);
+      const updatedEvent = await eventService.updateEvent(eventId, updates);
 
-      if (event) {
-        toast.success('Event created successfully!');
-        
-        // Automatically RSVP the creator to the event
-        if (user) {
-          await eventService.rsvpToEvent(
-            event.id,
-            user.id,
-            user.avatarUrl || `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id}`
-          );
-        }
-        
+      if (updatedEvent) {
+        toast.success('Event updated successfully!');
         router.back();
       } else {
-        toast.error('Failed to create event');
+        toast.error('Failed to update event');
       }
     } catch (error) {
-      console.error('Error creating event:', error);
-      // Show more specific error message
+      console.error('Error updating event:', error);
       if (error instanceof Error) {
         toast.error(`Error: ${error.message}`);
       } else {
@@ -217,11 +217,9 @@ export default function CreateEventScreen() {
 
   const onDateChange = (event: any, selectedDate: Date | undefined) => {
     if (Platform.OS === 'android') {
-      // On Android, hide the picker immediately
       setShowDatePicker(false);
     }
     
-    // Update the date if a new date was selected
     if (selectedDate) {
       setDate(selectedDate);
     }
@@ -235,6 +233,24 @@ export default function CreateEventScreen() {
       day: 'numeric' 
     });
   };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen 
+          options={{
+            title: '',
+            headerStyle: { backgroundColor: '#0A0A0A' },
+            headerTintColor: 'white',
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF006E" />
+          <Text style={styles.loadingText}>Loading event...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -274,7 +290,6 @@ export default function CreateEventScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* iOS Modal Date Picker */}
             {Platform.OS === 'ios' && (
               <Modal
                 transparent={true}
@@ -307,7 +322,6 @@ export default function CreateEventScreen() {
               </Modal>
             )}
 
-            {/* Android Date Picker */}
             {Platform.OS === 'android' && showDatePicker && (
               <DateTimePicker
                 testID="dateTimePicker"
@@ -399,9 +413,6 @@ export default function CreateEventScreen() {
                     <Text style={styles.imagePlaceholderText}>
                       {isUploadingImage ? 'Uploading...' : 'Tap to add cover image'}
                     </Text>
-                    <Text style={styles.imagePlaceholderSubtext}>
-                      Or leave blank for auto-generated image
-                    </Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -422,7 +433,7 @@ export default function CreateEventScreen() {
 
             <TouchableOpacity
               style={styles.button}
-              onPress={handleCreateEvent}
+              onPress={handleUpdateEvent}
               disabled={isSubmitting}
             >
               <LinearGradient
@@ -435,8 +446,8 @@ export default function CreateEventScreen() {
                   <ActivityIndicator color="white" />
                 ) : (
                   <>
-                    <Ionicons name="add-circle" size={20} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.buttonText}>Create Event</Text>
+                    <Ionicons name="save" size={20} color="white" style={styles.buttonIcon} />
+                    <Text style={styles.buttonText}>Update Event</Text>
                   </>
                 )}
               </LinearGradient>
@@ -452,6 +463,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0A0A0A',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#888',
+    fontSize: 16,
+    marginTop: 10,
   },
   keyboardAvoid: {
     flex: 1,
@@ -634,10 +655,5 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     marginTop: 10,
-  },
-  imagePlaceholderSubtext: {
-    color: '#888',
-    fontSize: 12,
-    marginTop: 5,
   },
 }); 

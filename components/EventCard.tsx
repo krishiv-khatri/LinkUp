@@ -1,9 +1,11 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
+import { imagePreloader } from '@/utils/imagePreloader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
+    ActivityIndicator,
     Animated,
     Dimensions,
     Image,
@@ -11,7 +13,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -22,17 +24,20 @@ interface Event {
   id: string;
   title: string;
   time: string;
+  date: string; // Add date field
   location: string;
   category: string;
   attendingFriends: string[];
   attendingCount: number;
   coverImage: string;
   description: string;
+  creator_id?: string; // Add creator_id field
 }
 
 interface EventCardProps {
   event: Event;
   index: number;
+  isRSVPed?: boolean; // Add optional prop for pre-computed RSVP status
 }
 
 const getCategoryGradient = (category: string): readonly [string, string] => {
@@ -65,11 +70,15 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-export default function EventCard({ event, index }: EventCardProps) {
+export default function EventCard({ event, index, isRSVPed: initialRSVPed }: EventCardProps) {
   const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isRSVPed, setIsRSVPed] = useState(false);
+  const [isRSVPed, setIsRSVPed] = useState(initialRSVPed || false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
+  const [imageLoadError, setImageLoadError] = useState(false);
+  const [isModalImageLoaded, setIsModalImageLoaded] = useState(false);
+  const [modalImageLoadError, setModalImageLoadError] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
 
@@ -98,16 +107,46 @@ export default function EventCard({ event, index }: EventCardProps) {
       ])
     ).start();
 
-    // Check if user is already attending this event
-    const checkAttendance = async () => {
-      if (user) {
-        const isAttending = await eventService.isAttending(event.id, user.id);
-        setIsRSVPed(isAttending);
-      }
-    };
+    // Preload images for this card and attendee avatars
+    const imagesToPreload = [
+      event.coverImage,
+      ...event.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
+    ];
+    imagePreloader.preloadImages(imagesToPreload, index < 3 ? 'high' : 'low');
 
-    checkAttendance();
-  }, [user, event.id]);
+    // Check if main image is already cached
+    setIsImageLoaded(imagePreloader.isImageCached(event.coverImage));
+    setImageLoadError(imagePreloader.isImageFailed(event.coverImage));
+    
+    // Also set modal image state based on cache
+    setIsModalImageLoaded(imagePreloader.isImageCached(event.coverImage));
+    setModalImageLoadError(imagePreloader.isImageFailed(event.coverImage));
+
+    // Only check attendance if not provided as prop
+    if (initialRSVPed === undefined) {
+      const checkAttendance = async () => {
+        if (user) {
+          const isAttending = await eventService.isAttending(event.id, user.id);
+          setIsRSVPed(isAttending);
+        }
+      };
+      checkAttendance();
+    }
+  }, [user, event.id, event.coverImage, event.attendingFriends, index, initialRSVPed]);
+
+  // When modal opens, ensure image is preloaded with high priority
+  useEffect(() => {
+    if (isExpanded && !isModalImageLoaded && !modalImageLoadError) {
+      imagePreloader.preloadSingleImage(event.coverImage).then((success) => {
+        if (success) {
+          setIsModalImageLoaded(true);
+          setModalImageLoadError(false);
+        } else {
+          setModalImageLoadError(true);
+        }
+      });
+    }
+  }, [isExpanded, event.coverImage, isModalImageLoaded, modalImageLoadError]);
 
   const handleRSVP = async () => {
     if (!user) {
@@ -197,7 +236,35 @@ export default function EventCard({ event, index }: EventCardProps) {
           </Animated.View>
 
           <View style={styles.cardContent}>
-            <Image source={{ uri: event.coverImage }} style={styles.coverImage} />
+            {/* Image loading placeholder */}
+            {!isImageLoaded && !imageLoadError && (
+              <View style={[styles.coverImage, styles.imagePlaceholder]}>
+                <ActivityIndicator size="small" color="#FF006E" />
+                <Text style={styles.loadingText}>Loading image...</Text>
+              </View>
+            )}
+            
+            {/* Error placeholder */}
+            {imageLoadError && (
+              <View style={[styles.coverImage, styles.imagePlaceholder]}>
+                <Ionicons name="image-outline" size={32} color="#666" />
+                <Text style={styles.errorText}>Image unavailable</Text>
+              </View>
+            )}
+            
+            {/* Main cover image */}
+            <Image 
+              source={{ uri: event.coverImage }} 
+              style={[styles.coverImage, { opacity: isImageLoaded ? 1 : 0 }]}
+              onLoad={() => {
+                setIsImageLoaded(true);
+                setImageLoadError(false);
+              }}
+              onError={() => {
+                setIsImageLoaded(false);
+                setImageLoadError(true);
+              }}
+            />
             
             <LinearGradient
               colors={['transparent', 'rgba(0,0,0,0.8)']}
@@ -221,6 +288,14 @@ export default function EventCard({ event, index }: EventCardProps) {
               <Text style={styles.eventTitle}>{event.title}</Text>
               
               <View style={styles.eventDetails}>
+                <View style={styles.detailItem}>
+                  <Ionicons name="calendar-outline" size={14} color="#888" />
+                  <Text style={styles.detailText}>{new Date(event.date).toLocaleDateString('en-US', { 
+                    weekday: 'short', 
+                    month: 'short', 
+                    day: 'numeric' 
+                  })}</Text>
+                </View>
                 <View style={styles.detailItem}>
                   <Ionicons name="time-outline" size={14} color="#888" />
                   <Text style={styles.detailText}>{event.time}</Text>
@@ -271,7 +346,35 @@ export default function EventCard({ event, index }: EventCardProps) {
             </TouchableOpacity>
           </View>
 
-          <Image source={{ uri: event.coverImage }} style={styles.modalImage} />
+          {/* Image loading placeholder for modal */}
+          {!isModalImageLoaded && !modalImageLoadError && (
+            <View style={[styles.modalImage, styles.imagePlaceholder]}>
+              <ActivityIndicator size="small" color="#FF006E" />
+              <Text style={styles.loadingText}>Loading image...</Text>
+            </View>
+          )}
+          
+          {/* Error placeholder for modal */}
+          {modalImageLoadError && (
+            <View style={[styles.modalImage, styles.imagePlaceholder]}>
+              <Ionicons name="image-outline" size={32} color="#666" />
+              <Text style={styles.errorText}>Image unavailable</Text>
+            </View>
+          )}
+
+          {/* Main modal image */}
+          <Image 
+            source={{ uri: event.coverImage }} 
+            style={[styles.modalImage, { opacity: isModalImageLoaded ? 1 : 0 }]}
+            onLoad={() => {
+              setIsModalImageLoaded(true);
+              setModalImageLoadError(false);
+            }}
+            onError={() => {
+              setIsModalImageLoaded(false);
+              setModalImageLoadError(true);
+            }}
+          />
           
           <LinearGradient
             colors={['transparent', 'rgba(10,10,10,0.95)']}
@@ -283,6 +386,15 @@ export default function EventCard({ event, index }: EventCardProps) {
             <Text style={styles.modalDescription}>{event.description}</Text>
             
             <View style={styles.modalDetails}>
+              <View style={styles.modalDetailItem}>
+                <Ionicons name="calendar" size={20} color="#FF006E" />
+                <Text style={styles.modalDetailText}>{new Date(event.date).toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}</Text>
+              </View>
               <View style={styles.modalDetailItem}>
                 <Ionicons name="time" size={20} color="#FF006E" />
                 <Text style={styles.modalDetailText}>{event.time}</Text>
@@ -512,5 +624,21 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 18,
     fontWeight: '700',
+  },
+  imagePlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A',
+    gap: 8,
+  },
+  loadingText: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

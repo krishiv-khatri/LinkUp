@@ -1,8 +1,13 @@
+import AttendeesList from '@/components/AttendeesList';
+import EventModal from '@/components/EventModal';
 import ProfileEditModal from '@/components/ProfileEditModal';
+import ThreeDotMenu from '@/components/ThreeDotMenu';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { eventService, Event as ServiceEvent } from '@/services/eventService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
     Alert,
@@ -23,13 +28,19 @@ import { toast } from 'sonner-native';
 
 const { width } = Dimensions.get('window');
 
-interface UserEvent {
+interface Event {
   id: string;
   title: string;
   time: string;
+  event_date: string;
   location: string;
   category: string;
   created_at: string;
+  description: string;
+  cover_image: string;
+  attendingCount: number;
+  attendingFriends: string[];
+  creator_id?: string;
 }
 
 interface SocialPlatform {
@@ -69,12 +80,15 @@ const socialPlatforms: Record<string, SocialPlatform> = {
 export default function ProfileScreen() {
   const { user, updateProfile, signOut } = useAuth();
   const [isOutOfTown, setIsOutOfTown] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [userEvents, setUserEvents] = useState<UserEvent[]>([]);
+  const [rsvpEvents, setRsvpEvents] = useState<Event[]>([]);
+  const [createdEvents, setCreatedEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<ServiceEvent | null>(null);
+  const [showEventModal, setShowEventModal] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const profileRingAnim = useRef(new Animated.Value(0)).current;
+  const router = useRouter();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -110,36 +124,66 @@ export default function ProfileScreen() {
     if (!user) return;
 
     try {
-      // Get events the user is attending
-      const { data: attendeeData, error: attendeeError } = await supabase
-        .from('attendees')
-        .select('event_id')
-        .eq('user_id', user.id);
-
-      if (attendeeError) {
-        console.error('Error fetching user attendees:', attendeeError);
-        return;
-      }
-
-      if (attendeeData && attendeeData.length > 0) {
-        const eventIds = attendeeData.map(a => a.event_id);
-        
-        const { data: eventsData, error: eventsError } = await supabase
-          .from('events')
-          .select('id, title, time, location, category, created_at')
-          .in('id', eventIds)
-          .order('created_at', { ascending: false });
-
-        if (eventsError) {
-          console.error('Error fetching events:', eventsError);
-        } else {
-          setUserEvents(eventsData || []);
-        }
-      }
+      setLoading(true);
+      
+      // Fetch both RSVP'd events and created events in parallel
+      const [rsvpEventsData, createdEventsData] = await Promise.all([
+        eventService.getRSVPdEvents(user.id),
+        fetchCreatedEvents(user.id)
+      ]);
+      
+      // Convert service events to local event format
+      const convertedRsvpEvents = rsvpEventsData.map(event => ({
+        ...event,
+        event_date: event.date,
+        cover_image: event.coverImage,
+        created_at: new Date().toISOString() // Add placeholder
+      }));
+      
+      setRsvpEvents(convertedRsvpEvents);
+      setCreatedEvents(createdEventsData);
     } catch (error) {
       console.error('Error fetching user events:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCreatedEvents = async (userId: string): Promise<Event[]> => {
+    try {
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('id, title, time, event_date, location, category, created_at, description, cover_image')
+        .eq('creator_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (eventsError) {
+        console.error('Error fetching created events:', eventsError);
+        return [];
+      }
+
+      // Get attendee counts for created events
+      const eventsWithCounts = await Promise.all(
+        (eventsData || []).map(async (event) => {
+          const count = await eventService.getAttendeeCount(event.id);
+          const { data: attendees } = await supabase
+            .from('attendees')
+            .select('avatar_url')
+            .eq('event_id', event.id)
+            .limit(5);
+          
+          return {
+            ...event,
+            attendingCount: count,
+            attendingFriends: attendees?.map(a => a.avatar_url) || []
+          };
+        })
+      );
+
+      return eventsWithCounts;
+    } catch (error) {
+      console.error('Error fetching created events:', error);
+      return [];
     }
   };
 
@@ -159,7 +203,7 @@ export default function ProfileScreen() {
         toast.success(value ? 'You\'re now marked as out of town' : 'Welcome back! You\'re now available');
       } else {
         toast.error('Could not update your status. Please try again.');
-        setIsOutOfTown(!value); // Revert on error
+        setIsOutOfTown(!value);
       }
     }
   };
@@ -200,25 +244,72 @@ export default function ProfileScreen() {
     );
   };
 
-  const getEventStatusColor = (event: UserEvent) => {
-    const now = new Date();
-    const eventDate = new Date(event.created_at);
-    return eventDate > now ? '#00C853' : '#FF9800';
+  const handleEditEvent = (event: Event) => {
+    router.push(`/edit-event?eventId=${event.id}`);
   };
 
-  const formatEventTime = (timeString: string) => {
+  const handleDeleteEvent = (eventId: string) => {
+    Alert.alert(
+      'Cancel Event',
+      'Are you sure you want to cancel this event? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Cancel Event',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const success = await eventService.deleteEvent(eventId);
+              
+              if (success) {
+                toast.success('Event cancelled successfully');
+                setCreatedEvents(prev => prev.filter(e => e.id !== eventId));
+              } else {
+                toast.error('Failed to cancel event');
+              }
+            } catch (error) {
+              console.error('Delete event error:', error);
+              toast.error('Something went wrong while cancelling the event');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEventPress = (event: Event) => {
+    // Convert event format for modal
+    const modalEvent: ServiceEvent = {
+      ...event,
+      date: event.event_date,
+      coverImage: event.cover_image,
+      attendingFriends: event.attendingFriends,
+      attendingCount: event.attendingCount
+    };
+    setSelectedEvent(modalEvent);
+    setShowEventModal(true);
+  };
+
+  const formatEventTime = (event: Event) => {
     try {
-      const date = new Date(timeString);
+      const date = new Date(event.event_date);
       return date.toLocaleDateString('en-US', { 
         weekday: 'short',
         month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
+        day: 'numeric'
       });
     } catch {
-      return timeString;
+      return event.time;
     }
+  };
+
+  const getEventStatusColor = (event: Event) => {
+    const now = new Date();
+    const eventDate = new Date(event.event_date);
+    return eventDate > now ? '#00C853' : '#FF9800';
   };
 
   const getDisplayName = () => {
@@ -288,6 +379,7 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* Profile Header */}
           <Animated.View style={[styles.profileHeader, { opacity: fadeAnim }]}>
             <View style={styles.avatarContainer}>
               <Animated.View style={[styles.avatarRing, { opacity: ringOpacity }]}>
@@ -337,6 +429,7 @@ export default function ProfileScreen() {
             </View>
           </Animated.View>
 
+          {/* Social Handles Section */}
           {socialHandles.length > 0 && (
             <Animated.View style={[styles.socialsSection, { opacity: fadeAnim }]}>
               <Text style={styles.sectionTitle}>Socials</Text>
@@ -364,54 +457,111 @@ export default function ProfileScreen() {
             </Animated.View>
           )}
 
-          <Animated.View style={[styles.plansSection, { opacity: fadeAnim }]}>
+          {/* Your Plans Section */}
+          <Animated.View style={[styles.eventsSection, { opacity: fadeAnim }]}>
             <Text style={styles.sectionTitle}>Your Plans</Text>
             
-            <View style={styles.plansContainer}>
+            <View style={styles.eventsContainer}>
               {loading ? (
-                <Text style={styles.loadingText}>Loading your events...</Text>
-              ) : userEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No upcoming events. Start exploring!</Text>
+                <Text style={styles.loadingText}>Loading your plans...</Text>
+              ) : rsvpEvents.length === 0 ? (
+                <Text style={styles.emptyText}>No upcoming plans. Start exploring events!</Text>
               ) : (
-                userEvents.map((event, index) => (
+                rsvpEvents.map((event, index) => (
                   <TouchableOpacity
                     key={event.id}
-                    style={[
-                      styles.planCard,
-                      selectedPlan === event.id && styles.selectedPlanCard
-                    ]}
-                    onPress={() => setSelectedPlan(selectedPlan === event.id ? null : event.id)}
+                    style={styles.eventCard}
+                    onPress={() => handleEventPress(event)}
                   >
-                    <LinearGradient
-                      colors={(
-                        selectedPlan === event.id 
-                          ? ['#FF006E', '#8338EC'] 
-                          : ['transparent', 'transparent']
-                      ) as any}
-                      style={styles.planCardGradient}
-                    >
-                      <View style={styles.planCardContent}>
-                        <View style={styles.planInfo}>
-                          <Text style={styles.planTitle}>{event.title}</Text>
-                          <Text style={styles.planDetails}>
-                            {formatEventTime(event.time)} • {event.location}
-                          </Text>
-                        </View>
-                        
-                        <View style={styles.planStatus}>
-                          <View style={[
-                            styles.statusDot, 
-                            { backgroundColor: getEventStatusColor(event) }
-                          ]} />
-                        </View>
+                    <Image 
+                      source={{ 
+                        uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
+                      }} 
+                      style={styles.eventImage}
+                    />
+                    
+                    <View style={styles.eventInfo}>
+                      <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                      <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
+                        {formatEventTime(event)} • {event.location}
+                      </Text>
+                      <View style={styles.eventMeta}>
+                        <AttendeesList 
+                          attendees={event.attendingFriends.map((avatar, idx) => ({
+                            id: `${event.id}-${idx}`,
+                            user_id: `user-${idx}`,
+                            avatar_url: avatar,
+                            name: 'Guest'
+                          }))}
+                          totalCount={event.attendingCount}
+                          maxVisible={3}
+                        />
                       </View>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                 ))
               )}
             </View>
           </Animated.View>
 
+          {/* Your Events Section */}
+          <Animated.View style={[styles.eventsSection, { opacity: fadeAnim }]}>
+            <Text style={styles.sectionTitle}>Your Events</Text>
+            
+            <View style={styles.eventsContainer}>
+              {loading ? (
+                <Text style={styles.loadingText}>Loading your events...</Text>
+              ) : createdEvents.length === 0 ? (
+                <Text style={styles.emptyText}>No events created yet. Create your first event!</Text>
+              ) : (
+                createdEvents.map((event, index) => (
+                  <TouchableOpacity
+                    key={event.id}
+                    style={styles.eventCard}
+                    onPress={() => handleEventPress(event)}
+                  >
+                    <Image 
+                      source={{ 
+                        uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
+                      }} 
+                      style={styles.eventImage}
+                    />
+                    
+                    <View style={styles.eventInfo}>
+                      <View style={styles.eventHeader}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                        <View style={styles.eventMenuContainer}>
+                          <ThreeDotMenu
+                            onEdit={() => handleEditEvent(event)}
+                            onDelete={() => handleDeleteEvent(event.id)}
+                          />
+                        </View>
+                      </View>
+                      
+                      <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
+                        {formatEventTime(event)} • {event.location}
+                      </Text>
+                      
+                      <View style={styles.eventMeta}>
+                        <AttendeesList 
+                          attendees={event.attendingFriends.map((avatar, idx) => ({
+                            id: `${event.id}-${idx}`,
+                            user_id: `user-${idx}`,
+                            avatar_url: avatar,
+                            name: 'Guest'
+                          }))}
+                          totalCount={event.attendingCount}
+                          maxVisible={3}
+                        />
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </Animated.View>
+
+          {/* Settings Section */}
           <Animated.View style={[styles.settingsSection, { opacity: fadeAnim }]}>
             <Text style={styles.sectionTitle}>Settings</Text>
             
@@ -465,6 +615,7 @@ export default function ProfileScreen() {
         </ScrollView>
       </SafeAreaView>
       
+      {/* Modals */}
       <ProfileEditModal
         visible={showEditModal}
         onClose={() => setShowEditModal(false)}
@@ -472,6 +623,13 @@ export default function ProfileScreen() {
           toast.success('Profile updated successfully!');
           setShowEditModal(false);
         }}
+      />
+
+      <EventModal
+        event={selectedEvent}
+        visible={showEventModal}
+        onClose={() => setShowEventModal(false)}
+        showAttendees={true}
       />
     </View>
   );
@@ -623,7 +781,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#888',
   },
-  plansSection: {
+  eventsSection: {
     paddingHorizontal: 20,
     marginBottom: 30,
   },
@@ -633,7 +791,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 16,
   },
-  plansContainer: {
+  eventsContainer: {
     gap: 12,
   },
   loadingText: {
@@ -648,45 +806,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  planCard: {
+  eventCard: {
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#1A1A1A',
-  },
-  selectedPlanCard: {
-    transform: [{ scale: 1.02 }],
-  },
-  planCardGradient: {
-    padding: 1,
-  },
-  planCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
+    height: 120,
+    padding: 12,
   },
-  planInfo: {
+  eventImage: {
+    width: 100,
+    height: 96,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  eventInfo: {
     flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    justifyContent: 'center',
   },
-  planTitle: {
+  eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  eventMenuContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 36,
+    height: 36,
+  },
+  eventTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
   },
-  planDetails: {
+  eventDetails: {
     fontSize: 14,
     color: '#888',
+    marginBottom: 8,
   },
-  planStatus: {
+  eventMeta: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    justifyContent: 'space-between',
   },
   settingsSection: {
     paddingHorizontal: 20,
