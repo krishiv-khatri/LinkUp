@@ -76,4 +76,16 @@ export async function getFriendsList(currentUserId: string) {
     .select('*, sender:profiles!friends_user_id_fkey(*), receiver:profiles!friends_friend_id_fkey(*)')
     .eq('status', 'accepted')
     .or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`);
+}
+
+/**
+ * Get outgoing friend requests for the current user.
+ * @param {string} currentUserId - The current user's profile id.
+ */
+export async function getOutgoingFriendRequests(currentUserId: string) {
+  return await supabase
+    .from('friends')
+    .select('*, receiver:profiles!friends_friend_id_fkey(*)')
+    .eq('user_id', currentUserId)
+    .eq('status', 'pending');
 } 
