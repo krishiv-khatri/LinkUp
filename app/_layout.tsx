@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 import 'react-native-url-polyfill/auto';
 import { Toaster } from 'sonner-native';
 import { AuthProvider } from '../contexts/AuthContext';
+import { EventsProvider } from '../contexts/EventsContext';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -25,13 +26,15 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AuthProvider>
-          <Toaster />
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="auto" />
+          <EventsProvider>
+            <Toaster />
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+            <StatusBar style="auto" />
+          </EventsProvider>
         </AuthProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

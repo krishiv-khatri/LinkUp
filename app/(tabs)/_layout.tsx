@@ -71,13 +71,20 @@ export default function Layout() {
     return null;
   }
 
-  const ActiveComponent = tabs.find(tab => tab.name === activeTab)?.component || HomeScreen;
-
   return (
     <SafeAreaProvider style={styles.container}>
       <Toaster />
       <View style={styles.content}>
-        <ActiveComponent />
+        {/* Render all screens but control visibility to preserve state */}
+        <View style={[styles.screenContainer, { display: activeTab === 'Now' ? 'flex' : 'none' }]}>
+          <HomeScreen />
+        </View>
+        <View style={[styles.screenContainer, { display: activeTab === 'Friends' ? 'flex' : 'none' }]}>
+          <FriendsScreen />
+        </View>
+        <View style={[styles.screenContainer, { display: activeTab === 'Profile' ? 'flex' : 'none' }]}>
+          <ProfileScreen />
+        </View>
       </View>
       <CustomFooter activeTab={activeTab} onTabPress={setActiveTab} />
     </SafeAreaProvider>
@@ -129,5 +136,8 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  screenContainer: {
+    flex: 1,
   },
 });
