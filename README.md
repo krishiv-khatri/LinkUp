@@ -1,50 +1,61 @@
-# Welcome to your Expo app 👋
+# LinkUp
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native app built with Expo for connecting friends and organizing events.
 
-## Get started
+## Features
 
-1. Install dependencies
+- User authentication with Supabase
+- Event creation and management
+- Friend connections
+- Profile management
+- Real-time updates
 
-   ```bash
-   npm install
-   ```
+## Authentication Persistence
 
-2. Start the app
+The app now properly persists authentication state between app reloads and restarts. This was implemented by:
 
-   ```bash
-   npx expo start
-   ```
+1. **Secure Session Storage**: Using `expo-secure-store` to securely store Supabase session tokens
+2. **Proper Session Initialization**: The app checks for existing sessions on startup
+3. **Auth State Management**: Robust handling of auth state changes and token refresh
 
-In the output, you'll find options to open the app in a
+### Testing Authentication Persistence
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+To verify that authentication persistence is working:
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+1. Sign in to the app
+2. Reload the app (fast refresh or full reload)
+3. The user should remain logged in and not be redirected to the login screen
 
-## Get a fresh project
+### Debugging
 
-When you're ready, run:
+The app includes detailed logging for authentication events. Check the console for:
+- `🔐 Initializing auth state...` - App startup
+- `✅ Found existing session for user:` - Session restored
+- `🔄 Auth state changed:` - Auth state changes
+- `🔄 Token refreshed for user:` - Token refresh events
+
+You can also use the debug utilities in `utils/sessionDebug.ts` to manually check session storage.
+
+## Development
 
 ```bash
-npm run reset-project
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
+
+# Run on iOS
+npm run ios
+
+# Run on Android
+npm run android
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Environment Setup
 
-## Learn more
+Make sure you have the following environment variables set up in your Supabase project:
+- Database URL
+- Anon Key
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+The app is configured to use secure storage for session persistence on mobile platforms.

@@ -21,28 +21,43 @@ export interface User {
 export const authService = {
   // Get current user
   async getCurrentUser(): Promise<User | null> {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) return null;
-    
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    
-    return {
-      id: user.id,
-      email: user.email,
-      username: profile?.username,
-      displayName: profile?.display_name,
-      avatarUrl: profile?.avatar_url,
-      status: profile?.status,
-      statusType: profile?.status_type,
-      isOutOfTown: profile?.is_out_of_town,
-      dateOfBirth: profile?.date_of_birth,
-      socialHandles: profile?.social_handles,
-    };
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      
+      if (error) {
+        console.error('Error getting user:', error);
+        return null;
+      }
+      
+      if (!user) return null;
+      
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (profileError && profileError.code !== 'PGRST116') {
+        // PGRST116 is "not found" error, which is expected for new users
+        console.error('Error fetching profile:', profileError);
+      }
+      
+      return {
+        id: user.id,
+        email: user.email,
+        username: profile?.username,
+        displayName: profile?.display_name,
+        avatarUrl: profile?.avatar_url,
+        status: profile?.status,
+        statusType: profile?.status_type,
+        isOutOfTown: profile?.is_out_of_town,
+        dateOfBirth: profile?.date_of_birth,
+        socialHandles: profile?.social_handles,
+      };
+    } catch (error) {
+      console.error('Error in getCurrentUser:', error);
+      return null;
+    }
   },
   
   // Sign up a new user
