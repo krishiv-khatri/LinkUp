@@ -160,6 +160,11 @@ export default function EditEventScreen() {
       return;
     }
 
+    if (!eventId) {
+      toast.error('Event ID is missing');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       let imageUrl = uploadedImageUrl || selectedImage;
@@ -181,13 +186,14 @@ export default function EditEventScreen() {
         description,
       };
       
+      console.log('Updating event with ID:', eventId, 'and updates:', updates);
       const updatedEvent = await eventService.updateEvent(eventId, updates);
 
       if (updatedEvent) {
         toast.success('Event updated successfully!');
         router.back();
       } else {
-        toast.error('Failed to update event');
+        toast.error('Failed to update event - event may not exist');
       }
     } catch (error) {
       console.error('Error updating event:', error);

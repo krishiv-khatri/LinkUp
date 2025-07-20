@@ -4,16 +4,17 @@ import { eventService } from '@/services/eventService';
 import { imagePreloader } from '@/utils/imagePreloader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -168,24 +169,27 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
       onRequestClose={onClose}
     >
       <View style={styles.modalContainer}>
+        {/* Backdrop blur effect */}
+        <View style={styles.modalBackdrop} />
+        
         <View style={styles.modalHeader}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="white" />
+            <Ionicons name="close" size={20} color="#ffffff" />
           </TouchableOpacity>
         </View>
 
         {/* Image loading placeholder */}
         {!isImageLoaded && !imageLoadError && (
           <View style={[styles.modalImage, styles.imagePlaceholder]}>
-            <ActivityIndicator size="large" color="#FF006E" />
-            <Text style={styles.loadingText}>Loading image...</Text>
+            <ActivityIndicator size="large" color="#888" />
+            <Text style={styles.loadingText}>Loading...</Text>
           </View>
         )}
         
         {/* Error placeholder */}
         {imageLoadError && (
           <View style={[styles.modalImage, styles.imagePlaceholder]}>
-            <Ionicons name="image-outline" size={48} color="#666" />
+            <Ionicons name="image-outline" size={32} color="#666" />
             <Text style={styles.errorText}>Image unavailable</Text>
           </View>
         )}
@@ -205,36 +209,29 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
         />
         
         <LinearGradient
-          colors={['transparent', 'rgba(10,10,10,0.95)']}
+          colors={['transparent', 'rgba(0,0,0,0.8)']}
           style={styles.modalOverlay}
         />
 
-        <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.modalTitle}>{event.title}</Text>
-          <Text style={styles.modalDescription}>{event.description}</Text>
-          
-          <View style={styles.modalDetails}>
-            <View style={styles.modalDetailItem}>
-              <Ionicons name="calendar" size={20} color="#FF006E" />
-              <Text style={styles.modalDetailText}>
-                {new Date(event.date).toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </Text>
-            </View>
-            <View style={styles.modalDetailItem}>
-              <Ionicons name="time" size={20} color="#FF006E" />
-              <Text style={styles.modalDetailText}>{event.time}</Text>
-            </View>
-            <View style={styles.modalDetailItem}>
-              <Ionicons name="location" size={20} color="#FF006E" />
-              <Text style={styles.modalDetailText}>{event.location}</Text>
+        <ScrollView 
+          style={styles.modalContent} 
+          contentContainerStyle={styles.modalContentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.modalTitleSection}>
+            <Text style={styles.modalTitle}>{event.title}</Text>
+            <View style={styles.categoryIndicator}>
+              <Ionicons 
+                name="star" 
+                size={14} 
+                color="#888" 
+              />
+              <Text style={styles.categoryText}>{event.category}</Text>
             </View>
           </View>
-
+          
+          <Text style={styles.modalDescription}>{event.description}</Text>
+          
           {showAttendees && (
             <View style={styles.attendeesSection}>
               <Text style={styles.attendeesTitle}>
@@ -243,7 +240,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
               
               {loadingAttendees ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color="#FF006E" />
+                  <ActivityIndicator size="small" color="#888" />
                 </View>
               ) : (
                 <AttendeesList 
@@ -253,32 +250,72 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
               )}
             </View>
           )}
+          
+          <View style={styles.modalDetails}>
+            <View style={styles.modalDetailItem}>
+              <Ionicons name="calendar-outline" size={16} color="#888" />
+              <Text style={styles.modalDetailText}>
+                {new Date(event.date).toLocaleDateString('en-US', { 
+                  weekday: 'short', 
+                  month: 'short', 
+                  day: 'numeric' 
+                })}
+              </Text>
+            </View>
+            <View style={styles.modalDetailItem}>
+              <Ionicons name="time-outline" size={16} color="#888" />
+              <Text style={styles.modalDetailText}>{event.time}</Text>
+            </View>
+            <View style={styles.modalDetailItem}>
+              <Ionicons name="location-outline" size={16} color="#888" />
+              <Text style={styles.modalDetailText}>{event.location}</Text>
+            </View>
+          </View>
 
-          <TouchableOpacity 
-            style={[styles.rsvpButton, isRSVPed && styles.rsvpButtonActive]}
-            onPress={handleRSVP}
-            disabled={isLoading}
-          >
-            <LinearGradient
-              colors={isRSVPed ? ['#00C853', '#4CAF50'] : getCategoryGradient(event.category)}
-              style={styles.rsvpGradient}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <>
-                  <Ionicons 
-                    name={isRSVPed ? "checkmark-circle" : "add-circle"} 
-                    size={20} 
-                    color="white" 
-                  />
-                  <Text style={styles.rsvpButtonText}>
-                    {isRSVPed ? "You're Going!" : "RSVP"}
-                  </Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
+          <View style={styles.actionButtons}>
+            {user && event.creator_id === user.id ? (
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => {
+                  onClose();
+                  router.push(`/edit-event?eventId=${event.id}`);
+                }}
+              >
+                <View style={styles.editButtonContent}>
+                  <Ionicons name="create-outline" size={16} color="#000000" />
+                  <Text style={styles.editButtonText}>Edit Event</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.rsvpButton}
+                onPress={handleRSVP}
+                disabled={isLoading}
+              >
+                <View style={[
+                  styles.rsvpButtonBackground,
+                  isRSVPed && { opacity: 1 }
+                ]} />
+                <View style={styles.rsvpButtonContent}>
+                  {isLoading ? (
+                    <ActivityIndicator color="#000000" size="small" />
+                  ) : (
+                    <Text style={[
+                      styles.rsvpButtonText,
+                      isRSVPed && styles.rsvpButtonTextGoing
+                    ]}>
+                      {isRSVPed ? 'Going' : 'RSVP'}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            )}
+            
+            <TouchableOpacity style={styles.shareButton}>
+              <Ionicons name="share-outline" size={16} color="#888" />
+              <Text style={styles.shareButtonText}>Share</Text>
+            </TouchableOpacity>
+          </View>
           
           {/* Add bottom padding for scroll */}
           <View style={{ height: 40 }} />
@@ -291,26 +328,36 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#000000',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   modalHeader: {
     position: 'absolute',
     top: 50,
-    right: 20,
+    right: 16,
     zIndex: 10,
   },
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    backdropFilter: 'blur(10px)',
   },
   modalImage: {
     width: '100%',
-    height: 300,
+    aspectRatio: 1,
     resizeMode: 'cover',
+    maxHeight: 400,
   },
   modalOverlay: {
     position: 'absolute',
@@ -321,83 +368,169 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    padding: 20,
-    marginTop: -50,
+  },
+  modalContentContainer: {
+    padding: 16,
+    paddingTop: 24,
+    justifyContent: 'flex-end',
+    flexGrow: 1,
+  },
+  modalTitleSection: {
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: 'white',
-    marginBottom: 12,
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  categoryIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryText: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   modalDescription: {
-    fontSize: 16,
-    color: '#CCC',
-    lineHeight: 24,
-    marginBottom: 24,
+    fontSize: 15,
+    color: '#cccccc',
+    lineHeight: 22,
+    marginBottom: 20,
+    fontWeight: '400',
   },
   modalDetails: {
-    marginBottom: 32,
-    gap: 12,
+    marginBottom: 24,
+    gap: 8,
   },
   modalDetailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   modalDetailText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: '500',
   },
   attendeesSection: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   attendeesTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    color: 'white',
-    marginBottom: 16,
+    color: '#ffffff',
+    marginBottom: 12,
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
   },
   rsvpButton: {
-    borderRadius: 16,
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     overflow: 'hidden',
-    marginBottom: 20,
+    position: 'relative',
   },
-  rsvpButtonActive: {
-    // Additional styles for active state if needed
+  rsvpButtonBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#22c55e',
+    borderRadius: 12,
+    opacity: 0,
   },
-  rsvpGradient: {
+  rsvpButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    gap: 8,
+    gap: 6,
+    zIndex: 1,
+  },
+  rsvpButtonActive: {
+    backgroundColor: '#22c55e',
   },
   rsvpButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  rsvpButtonTextActive: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  rsvpButtonTextGoing: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  editButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  editButtonText: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  shareButtonText: {
+    color: '#888',
+    fontSize: 15,
+    fontWeight: '500',
   },
   imagePlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
-    padding: 20,
+    backgroundColor: '#2A2A2A',
+    gap: 8,
   },
   loadingText: {
-    color: '#FF006E',
-    fontSize: 16,
-    marginTop: 10,
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '500',
   },
   errorText: {
-    color: '#666',
-    fontSize: 16,
-    marginTop: 10,
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '500',
   },
 }); 

@@ -153,7 +153,7 @@ export default function ProfileScreen() {
     try {
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('id, title, time, event_date, location, category, created_at, description, cover_image')
+        .select('id, title, time, event_date, location, category, created_at, description, cover_image, creator_id')
         .eq('creator_id', userId)
         .order('created_at', { ascending: false });
 
@@ -281,14 +281,21 @@ export default function ProfileScreen() {
   };
 
   const handleEventPress = (event: Event) => {
-    // Convert event format for modal
+    // Convert event format for modal - make it match EventModal's Event interface exactly
     const modalEvent: ServiceEvent = {
-      ...event,
-      date: event.event_date,
-      coverImage: event.cover_image,
+      id: event.id,
+      title: event.title,
+      time: event.time,
+      date: event.event_date, // Convert event_date to date
+      location: event.location,
+      category: event.category,
       attendingFriends: event.attendingFriends,
-      attendingCount: event.attendingCount
+      attendingCount: event.attendingCount,
+      coverImage: event.cover_image, // Convert cover_image to coverImage
+      description: event.description,
+      creator_id: event.creator_id
     };
+    
     setSelectedEvent(modalEvent);
     setShowEventModal(true);
   };
