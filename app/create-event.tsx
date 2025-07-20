@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
+import { imageUploadService } from '@/services/imageUploadService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -108,38 +109,18 @@ export default function CreateEventScreen() {
     try {
       setIsUploadingImage(true);
       
-      // Create a unique filename
-      const fileExtension = imageUri.split('.').pop();
-      const fileName = `event-${Date.now()}.${fileExtension}`;
+      // Upload using our centralized image upload service
+      const uploadResult = await imageUploadService.uploadEventCover(imageUri);
       
-      // Convert image to blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      
-      // Upload to Supabase storage
-      const { supabase } = await import('@/lib/supabase');
-      const { data, error } = await supabase.storage
-        .from('event-images')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          upsert: false
-        });
-      
-      if (error) {
-        console.error('Upload error:', error);
-        toast.error('Failed to upload image');
+      if (uploadResult.success && uploadResult.publicUrl) {
+        // Store the uploaded URL
+        setUploadedImageUrl(uploadResult.publicUrl);
+        return uploadResult.publicUrl;
+      } else {
+        console.error('Upload error:', uploadResult.error);
+        toast.error(uploadResult.error || 'Failed to upload image');
         return null;
       }
-      
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-images')
-        .getPublicUrl(fileName);
-      
-      // Store the uploaded URL
-      setUploadedImageUrl(publicUrl);
-      
-      return publicUrl;
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload image');
