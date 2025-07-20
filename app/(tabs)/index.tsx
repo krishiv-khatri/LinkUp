@@ -7,15 +7,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Dimensions,
-    RefreshControl,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  RefreshControl,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -68,9 +68,14 @@ export default function HomeScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         <SafeAreaView style={styles.safeArea}>
-          <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-            <Text style={styles.headerTitle}>Right Now</Text>
-            <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
+          <Animated.View style={[styles.header, { opacity: headerOpacity, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+            <View>
+              <Text style={styles.headerTitle}>Right Now</Text>
+              <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
+            </View>
+            <TouchableOpacity style={{ padding: 8, marginLeft: 8 }} onPress={() => router.push('/notifications')}>
+              <Ionicons name="notifications-outline" size={28} color="white" />
+            </TouchableOpacity>
           </Animated.View>
 
           <FilterBar
@@ -109,7 +114,7 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={styles.eventsContainer}>
-                {filteredEvents.map((event, index) => (
+                {filteredEvents.map((event: Event, index: number) => (
                   <EventCard
                     key={event.id}
                     event={event}
