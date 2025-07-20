@@ -293,12 +293,12 @@ export const eventService = {
   },
 
   // Get attendees for an event with their details
-  async getAttendees(eventId: string): Promise<{ id: string; user_id: string; avatar_url: string; name?: string }[]> {
+  async getAttendees(eventId: string): Promise<{ id: string; user_id: string; avatar_url: string; name?: string; created_at?: string }[]> {
     try {
       // First get attendees
       const { data: attendees, error: attendeesError } = await supabase
         .from('attendees')
-        .select('id, user_id, avatar_url')
+        .select('id, user_id, avatar_url, created_at')
         .eq('event_id', eventId);
       
       if (attendeesError) {
@@ -324,7 +324,8 @@ export const eventService = {
           id: attendee.id,
           user_id: attendee.user_id,
           avatar_url: attendee.avatar_url,
-          name: 'User'
+          name: 'User',
+          created_at: attendee.created_at,
         }));
       }
 
@@ -337,7 +338,8 @@ export const eventService = {
           id: attendee.id,
           user_id: attendee.user_id,
           avatar_url: attendee.avatar_url,
-          name: firstName
+          name: firstName,
+          created_at: attendee.created_at,
         };
       });
     } catch (error) {
