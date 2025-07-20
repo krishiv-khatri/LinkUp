@@ -1,8 +1,7 @@
 import EventCard from '@/components/EventCard'; // Adjusted path
 import FilterBar from '@/components/FilterBar'; // Adjusted path
 import { useAuth } from '@/contexts/AuthContext';
-import { Event, eventService } from '@/services/eventService';
-import { imagePreloader } from '@/utils/imagePreloader';
+import { useEvents } from '@/contexts/EventsContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -24,11 +23,8 @@ const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuth();
+  const { events, attendanceMap, loading, refreshing, refreshEvents, fetchEvents } = useEvents();
   const [selectedFilter, setSelectedFilter] = useState('now');
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -37,60 +33,11 @@ export default function HomeScreen() {
     outputRange: [1, 0.9],
     extrapolate: 'clamp',
   });
-  
-  const fetchEvents = async () => {
-    try {
-      console.log('🔄 Fetching events...');
-      const data = await eventService.getEvents();
-      setEvents(data);
-      
-      // Batch check attendance for all events if user is logged in
-      if (user && data.length > 0) {
-        console.log('👤 Checking attendance for', data.length, 'events');
-        const eventIds = data.map(e => e.id);
-        const attendanceData = await eventService.batchCheckAttendance(eventIds, user.id);
-        setAttendanceMap(attendanceData);
-      }
-      
-      // Preload images with priority
-      if (data.length > 0) {
-        console.log('🖼️ Starting image preloading...');
-        
-        // High priority: First 3 events (immediately visible)
-        const visibleEvents = data.slice(0, 3);
-        const visibleImages = visibleEvents.flatMap(e => [
-          e.coverImage,
-          ...e.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-        ]);
-        
-        // Low priority: Remaining events (background loading)
-        const backgroundEvents = data.slice(3);
-        const backgroundImages = backgroundEvents.flatMap(e => [
-          e.coverImage,
-          ...e.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-        ]);
-        
-        // Start preloading
-        imagePreloader.preloadImages(visibleImages, 'high');
-        imagePreloader.preloadImages(backgroundImages, 'low');
-        
-        // Log cache stats
-        const stats = imagePreloader.getCacheStats();
-        console.log('📊 Image cache stats:', stats);
-      }
-      
-    } catch (error) {
-      console.error('❌ Error fetching events:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
+  // Fetch events when screen loads (will use cache if available)
   useEffect(() => {
-    setLoading(true);
     fetchEvents();
-  }, [user]); // Re-fetch when user changes
+  }, []);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -101,9 +48,8 @@ export default function HomeScreen() {
   }, []);
   
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchEvents();
-  }, [user]);
+    refreshEvents();
+  }, [refreshEvents]);
 
   // Filter events based on selectedFilter
   const filteredEvents = React.useMemo(() => {

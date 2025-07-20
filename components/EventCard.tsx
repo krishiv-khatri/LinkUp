@@ -137,7 +137,10 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
   // When modal opens, ensure image is preloaded with high priority
   useEffect(() => {
     if (isExpanded && !isModalImageLoaded && !modalImageLoadError) {
+      // More aggressive preloading when modal opens
+      console.log('🖼️ Aggressively preloading modal image:', event.coverImage);
       imagePreloader.preloadSingleImage(event.coverImage).then((success) => {
+        console.log('✅ Modal image preload result:', success);
         if (success) {
           setIsModalImageLoaded(true);
           setModalImageLoadError(false);
@@ -147,6 +150,22 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
       });
     }
   }, [isExpanded, event.coverImage, isModalImageLoaded, modalImageLoadError]);
+
+  // Handle card press with immediate image preparation
+  const handleCardPress = () => {
+    console.log('🎯 Card pressed, preparing modal image...');
+    
+    // Start aggressive preloading immediately when card is pressed
+    if (!imagePreloader.isImageCached(event.coverImage)) {
+      console.log('📥 Image not cached, starting immediate preload...');
+      imagePreloader.preloadSingleImage(event.coverImage);
+    } else {
+      console.log('✅ Image already cached!');
+      setIsModalImageLoaded(true);
+    }
+    
+    setIsExpanded(true);
+  };
 
   const handleRSVP = async () => {
     if (!user) {
@@ -223,7 +242,7 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
       >
         <TouchableOpacity
           style={styles.card}
-          onPress={() => setIsExpanded(true)}
+          onPress={handleCardPress}
           activeOpacity={0.9}
         >
           <Animated.View style={[styles.glowBorder, { opacity: glowOpacity }]}>
@@ -349,7 +368,7 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           {/* Image loading placeholder for modal */}
           {!isModalImageLoaded && !modalImageLoadError && (
             <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <ActivityIndicator size="small" color="#FF006E" />
+              <ActivityIndicator size="large" color="#FF006E" />
               <Text style={styles.loadingText}>Loading image...</Text>
             </View>
           )}
@@ -357,22 +376,33 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           {/* Error placeholder for modal */}
           {modalImageLoadError && (
             <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <Ionicons name="image-outline" size={32} color="#666" />
+              <Ionicons name="image-outline" size={48} color="#666" />
               <Text style={styles.errorText}>Image unavailable</Text>
             </View>
           )}
 
-          {/* Main modal image */}
+          {/* Main modal image - always render for better caching */}
           <Image 
             source={{ uri: event.coverImage }} 
-            style={[styles.modalImage, { opacity: isModalImageLoaded ? 1 : 0 }]}
+            style={[
+              styles.modalImage, 
+              { 
+                opacity: isModalImageLoaded ? 1 : 0,
+                position: isModalImageLoaded ? 'relative' : 'absolute'
+              }
+            ]}
             onLoad={() => {
+              console.log('🖼️ Modal image loaded successfully');
               setIsModalImageLoaded(true);
               setModalImageLoadError(false);
             }}
-            onError={() => {
+            onError={(error) => {
+              console.error('❌ Modal image failed to load:', error);
               setIsModalImageLoaded(false);
               setModalImageLoadError(true);
+            }}
+            onLoadStart={() => {
+              console.log('📥 Modal image load started');
             }}
           />
           
