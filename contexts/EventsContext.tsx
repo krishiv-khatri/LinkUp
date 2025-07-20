@@ -1,5 +1,4 @@
 import { Event, eventService } from '@/services/eventService';
-import { imagePreloader } from '@/utils/imagePreloader';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
 
@@ -59,32 +58,7 @@ export function EventsProvider({ children }: EventsProviderProps) {
         setAttendanceMap(attendanceData);
       }
       
-      // Preload images with priority
-      if (data.length > 0) {
-        console.log('🖼️ Starting image preloading...');
-        
-        // High priority: First 5 events (immediately visible)
-        const visibleEvents = data.slice(0, 5);
-        const visibleImages = visibleEvents.flatMap(e => [
-          e.coverImage,
-          ...e.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-        ]);
-        
-        // Low priority: Remaining events (background loading)
-        const backgroundEvents = data.slice(5);
-        const backgroundImages = backgroundEvents.flatMap(e => [
-          e.coverImage,
-          ...e.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-        ]);
-        
-        // Start preloading
-        imagePreloader.preloadImages(visibleImages, 'high');
-        imagePreloader.preloadImages(backgroundImages, 'low');
-        
-        // Log cache stats
-        const stats = imagePreloader.getCacheStats();
-        console.log('📊 Image cache stats:', stats);
-      }
+      console.log('✅ Events loaded successfully:', data.length, 'events');
       
     } catch (error) {
       console.error('❌ Error fetching events:', error);

@@ -1,7 +1,7 @@
 import AttendeesList from '@/components/AttendeesList';
+import ProgressiveImage from '@/components/ProgressiveImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
-import { imagePreloader } from '@/utils/imagePreloader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -80,8 +80,6 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
   const [isLoading, setIsLoading] = useState(false);
   const [attendees, setAttendees] = useState<any[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [imageLoadError, setImageLoadError] = useState(false);
   const [isModalImageLoaded, setIsModalImageLoaded] = useState(false);
   const [modalImageLoadError, setModalImageLoadError] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -113,20 +111,9 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
       ])
     ).start();
 
-    // Preload images for this card and attendee avatars
-    const imagesToPreload = [
-      event.coverImage,
-      ...event.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-    ];
-    imagePreloader.preloadImages(imagesToPreload, index < 3 ? 'high' : 'low');
-
-    // Check if main image is already cached
-    setIsImageLoaded(imagePreloader.isImageCached(event.coverImage));
-    setImageLoadError(imagePreloader.isImageFailed(event.coverImage));
-    
-    // Also set modal image state based on cache
-    setIsModalImageLoaded(imagePreloader.isImageCached(event.coverImage));
-    setModalImageLoadError(imagePreloader.isImageFailed(event.coverImage));
+    // Set modal image state
+    setIsModalImageLoaded(false);
+    setModalImageLoadError(false);
 
     // Only check attendance if not provided as prop
     if (initialRSVPed === undefined) {
@@ -140,20 +127,12 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
     }
   }, [user, event.id, event.coverImage, event.attendingFriends, index, initialRSVPed]);
 
-  // When modal opens, ensure image is preloaded with high priority
+  // When modal opens, set image state
   useEffect(() => {
     if (isExpanded && !isModalImageLoaded && !modalImageLoadError) {
-      // More aggressive preloading when modal opens
-      console.log('🖼️ Aggressively preloading modal image:', event.coverImage);
-      imagePreloader.preloadSingleImage(event.coverImage).then((success) => {
-        console.log('✅ Modal image preload result:', success);
-        if (success) {
-          setIsModalImageLoaded(true);
-          setModalImageLoadError(false);
-        } else {
-          setModalImageLoadError(true);
-        }
-      });
+      // Set modal image as loaded for direct rendering
+      setIsModalImageLoaded(true);
+      setModalImageLoadError(false);
     }
   }, [isExpanded, event.coverImage, isModalImageLoaded, modalImageLoadError]);
 
@@ -176,14 +155,7 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
   const handleCardPress = () => {
     console.log('🎯 Card pressed, preparing modal image...');
     
-    // Start aggressive preloading immediately when card is pressed
-    if (!imagePreloader.isImageCached(event.coverImage)) {
-      console.log('📥 Image not cached, starting immediate preload...');
-      imagePreloader.preloadSingleImage(event.coverImage);
-    } else {
-      console.log('✅ Image already cached!');
-      setIsModalImageLoaded(true);
-    }
+    setIsModalImageLoaded(true);
     
     // Initialize RSVP animation state based on current RSVP status
     if (isRSVPed) {
@@ -286,34 +258,13 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           </Animated.View>
 
           <View style={styles.cardContent}>
-            {/* Image loading placeholder */}
-            {!isImageLoaded && !imageLoadError && (
-              <View style={[styles.coverImage, styles.imagePlaceholder]}>
-                <ActivityIndicator size="small" color="#FF006E" />
-                <Text style={styles.loadingText}>Loading image...</Text>
-              </View>
-            )}
-            
-            {/* Error placeholder */}
-            {imageLoadError && (
-              <View style={[styles.coverImage, styles.imagePlaceholder]}>
-                <Ionicons name="image-outline" size={32} color="#666" />
-                <Text style={styles.errorText}>Image unavailable</Text>
-              </View>
-            )}
-            
-            {/* Main cover image */}
-            <Image 
-              source={{ uri: event.coverImage }} 
-              style={[styles.coverImage, { opacity: isImageLoaded ? 1 : 0 }]}
-              onLoad={() => {
-                setIsImageLoaded(true);
-                setImageLoadError(false);
-              }}
-              onError={() => {
-                setIsImageLoaded(false);
-                setImageLoadError(true);
-              }}
+            {/* Progressive cover image */}
+            <ProgressiveImage
+              source={{ uri: event.coverImage }}
+              style={styles.coverImage}
+              fadeDuration={250}
+              thumbnailSize={150}
+              blurRadius={2}
             />
             
             <LinearGradient

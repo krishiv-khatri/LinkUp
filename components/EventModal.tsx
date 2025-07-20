@@ -1,7 +1,7 @@
 import AttendeesList from '@/components/AttendeesList';
+import ProgressiveImage from '@/components/ProgressiveImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
-import { imagePreloader } from '@/utils/imagePreloader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -67,8 +67,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
   const [isLoading, setIsLoading] = useState(false);
   const [attendees, setAttendees] = useState<any[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [imageLoadError, setImageLoadError] = useState(false);
+
 
   useEffect(() => {
     if (visible && event && user) {
@@ -77,19 +76,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
         loadAttendees();
       }
       
-      // Preload the event image when modal opens
-      imagePreloader.preloadSingleImage(event.coverImage).then((success) => {
-        if (success) {
-          setIsImageLoaded(true);
-          setImageLoadError(false);
-        } else {
-          setImageLoadError(true);
-        }
-      });
-      
-      // Check if image is already cached
-      setIsImageLoaded(imagePreloader.isImageCached(event.coverImage));
-      setImageLoadError(imagePreloader.isImageFailed(event.coverImage));
+
     }
   }, [visible, event, user, showAttendees]);
 
@@ -178,34 +165,13 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
           </TouchableOpacity>
         </View>
 
-        {/* Image loading placeholder */}
-        {!isImageLoaded && !imageLoadError && (
-          <View style={[styles.modalImage, styles.imagePlaceholder]}>
-            <ActivityIndicator size="large" color="#888" />
-            <Text style={styles.loadingText}>Loading...</Text>
-          </View>
-        )}
-        
-        {/* Error placeholder */}
-        {imageLoadError && (
-          <View style={[styles.modalImage, styles.imagePlaceholder]}>
-            <Ionicons name="image-outline" size={32} color="#666" />
-            <Text style={styles.errorText}>Image unavailable</Text>
-          </View>
-        )}
-
-        {/* Main modal image */}
-        <Image 
-          source={{ uri: event.coverImage }} 
-          style={[styles.modalImage, { opacity: isImageLoaded ? 1 : 0 }]}
-          onLoad={() => {
-            setIsImageLoaded(true);
-            setImageLoadError(false);
-          }}
-          onError={() => {
-            setIsImageLoaded(false);
-            setImageLoadError(true);
-          }}
+        {/* Progressive modal image */}
+        <ProgressiveImage
+          source={{ uri: event.coverImage }}
+          style={styles.modalImage}
+          fadeDuration={250}
+          thumbnailSize={200}
+          blurRadius={1.5}
         />
         
         <LinearGradient
