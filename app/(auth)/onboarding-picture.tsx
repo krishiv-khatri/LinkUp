@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { uploadImageToSupabase } from '@/utils/uploadImageToSupabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,11 +16,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OnboardingPictureScreen() {
-  const { updateProfile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const params = useLocalSearchParams();
-  
+
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const handlePickImage = async () => {
     try {
@@ -47,7 +50,21 @@ export default function OnboardingPictureScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setSelectedAvatar(result.assets[0].uri);
+        const uri = result.assets[0].uri;
+        setSelectedAvatar(uri);
+
+        if (user) {
+          setIsUploadingImage(true);
+          const uploadedUrl = await uploadImageToSupabase(
+            uri,
+            'avatars',
+            `avatars/${user.id}.jpg`
+          );
+          setIsUploadingImage(false);
+          if (uploadedUrl) {
+            setUploadedAvatarUrl(uploadedUrl);
+          }
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -56,15 +73,30 @@ export default function OnboardingPictureScreen() {
   };
 
   const handleNext = async () => {
-    if (selectedAvatar) {
+    let avatarUrlToSave = uploadedAvatarUrl;
+
+    if (selectedAvatar && !avatarUrlToSave && user) {
+      setIsLoading(true);
+      avatarUrlToSave = await uploadImageToSupabase(
+        selectedAvatar,
+        'avatars',
+        `avatars/${user.id}.jpg`
+      );
+      setIsLoading(false);
+    }
+
+    if (avatarUrlToSave) {
       setIsLoading(true);
       try {
         const result = await updateProfile({
-          avatarUrl: selectedAvatar,
+          avatarUrl: avatarUrlToSave,
         });
 
         if (!result.success) {
-          Alert.alert('Update Failed', result.error || 'Something went wrong while updating your profile picture. Please try again.');
+          Alert.alert(
+            'Update Failed',
+            result.error || 'Something went wrong while updating your profile picture. Please try again.'
+          );
           return;
         }
       } catch (error) {
@@ -81,7 +113,7 @@ export default function OnboardingPictureScreen() {
       pathname: '/onboarding-birthday',
       params: {
         ...params,
-        avatarUrl: selectedAvatar,
+        avatarUrl: avatarUrlToSave ?? undefined,
       },
     });
   };

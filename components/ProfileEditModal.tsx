@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { uploadImageToSupabase } from '@/utils/uploadImageToSupabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
@@ -29,6 +30,8 @@ export default function ProfileEditModal({ visible, onClose, onSave }: ProfileEd
   const [lastName, setLastName] = useState(user?.displayName?.split(' ')[1] || '');
   const [username, setUsername] = useState(user?.username || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
+  const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState('');
@@ -145,7 +148,22 @@ export default function ProfileEditModal({ visible, onClose, onSave }: ProfileEd
       });
 
       if (!result.canceled && result.assets[0]) {
-        setAvatarUrl(result.assets[0].uri);
+        const uri = result.assets[0].uri;
+        setAvatarUrl(uri);
+
+        if (user) {
+          setIsUploadingImage(true);
+          const uploadedUrl = await uploadImageToSupabase(
+            uri,
+            'avatars',
+            `avatars/${user.id}.jpg`
+          );
+          setIsUploadingImage(false);
+          if (uploadedUrl) {
+            setUploadedAvatarUrl(uploadedUrl);
+            setAvatarUrl(uploadedUrl);
+          }
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -174,7 +192,7 @@ export default function ProfileEditModal({ visible, onClose, onSave }: ProfileEd
       const result = await updateProfile({
         displayName: `${firstName.trim()} ${lastName.trim()}`,
         username: username.toLowerCase().trim(),
-        avatarUrl: avatarUrl || user?.avatarUrl,
+        avatarUrl: uploadedAvatarUrl || avatarUrl || user?.avatarUrl,
         socialHandles: socialHandles,
       });
 
@@ -200,6 +218,7 @@ export default function ProfileEditModal({ visible, onClose, onSave }: ProfileEd
   };
 
   const getAvatarUrl = () => {
+    if (uploadedAvatarUrl) return uploadedAvatarUrl;
     if (avatarUrl) return avatarUrl;
     if (user?.email) {
       return `https://api.a0.dev/assets/image?text=${user.email.slice(0, 1).toUpperCase()}&aspect=1:1&seed=${user.id.slice(0, 8)}`;
