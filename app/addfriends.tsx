@@ -3,9 +3,9 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing } from 'react-native';
 import {
     ActivityIndicator,
-    Animated,
     Image,
     StatusBar,
     StyleSheet,
@@ -71,6 +71,22 @@ export default function AddFriendsScreen() {
   const [error, setError] = useState<string | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownAnim = useRef(new Animated.Value(0)).current;
+
+  // Animated rotation for chevron
+  const chevronRotate = dropdownAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '-180deg'],
+  });
+
+  useEffect(() => {
+    Animated.timing(dropdownAnim, {
+      toValue: dropdownOpen ? 1 : 0,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [dropdownOpen]);
 
   // Combine incoming and outgoing pending requests for dropdown
   const pendingRequests = [
@@ -249,70 +265,137 @@ export default function AddFriendsScreen() {
           </View>
           {/* Pending Requests Dropdown */}
           {pendingRequests.length > 0 && (
-            <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
-              <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
-                onPress={() => setDropdownOpen(open => !open)}
-                activeOpacity={0.7}
+            <View
+              style={{
+                paddingHorizontal: 20,
+                marginBottom: 8,
+              }}
+            >
+              <View
+                style={{
+                  backgroundColor: dropdownOpen ? '#2A003F' : '#181818',
+                  borderRadius: 16,
+                  padding: 0,
+                  paddingBottom: dropdownOpen ? 8 : 0,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.15,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 2 },
+                  elevation: 3,
+                }}
               >
-                <Ionicons name={dropdownOpen ? 'chevron-up' : 'chevron-down'} size={20} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
-                  {pendingRequests.length} Pending Request{pendingRequests.length > 1 ? 's' : ''}
-                </Text>
-              </TouchableOpacity>
-              {dropdownOpen && (
-                <View style={{ backgroundColor: '#181818', borderRadius: 12, marginTop: 4, padding: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    borderTopLeftRadius: 16,
+                    borderTopRightRadius: 16,
+                  }}
+                  onPress={() => setDropdownOpen(open => !open)}
+                  activeOpacity={0.7}
+                >
+                  <Animated.View style={{ marginRight: 8, transform: [{ rotate: chevronRotate }] }}>
+                    <Ionicons name="chevron-down" size={20} color="#fff" />
+                  </Animated.View>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                    {pendingRequests.length} Pending Request{pendingRequests.length > 1 ? 's' : ''}
+                  </Text>
+                </TouchableOpacity>
+                <Animated.View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingTop: 4,
+                    opacity: dropdownAnim,
+                    height: dropdownAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, pendingRequests.length * 56], // 56px per row (approx)
+                      extrapolate: 'clamp',
+                    }),
+                    overflow: 'hidden',
+                  }}
+                >
                   {pendingRequests.map((req) => (
                     <View key={req.id + req.type} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                      {req.type === 'incoming' ? (
-                        <>
-                          {req.sender?.avatar_url ? (
-                            <Image source={{ uri: req.sender.avatar_url }} style={styles.dropdownAvatar} />
-                          ) : (
-                            <View style={[styles.avatar, { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                              <Ionicons name="person" size={20} color="#888" />
+                        {req.type === 'incoming' ? (
+                          <>
+                            {req.sender?.avatar_url ? (
+                              <Image source={{ uri: req.sender.avatar_url }} style={styles.dropdownAvatar} />
+                            ) : (
+                              <View style={[styles.avatar, { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                                <Ionicons name="person" size={20} color="#888" />
+                              </View>
+                            )}
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <Text style={{ color: '#fff', fontWeight: '600' }}>{req.sender?.display_name || req.sender?.username || 'Unknown'}</Text>
+                              <Text style={{ color: '#888', fontSize: 13 }}>@{req.sender?.username || ''}</Text>
                             </View>
-                          )}
-                          <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={{ color: '#fff', fontWeight: '600' }}>{req.sender?.display_name || req.sender?.username || 'Unknown'}</Text>
-                            <Text style={{ color: '#888', fontSize: 13 }}>@{req.sender?.username || ''}</Text>
-                          </View>
-                          <TouchableOpacity onPress={() => handleAccept(req.id, req.sender?.id)} style={{ marginRight: 4 }}>
-                            <Ionicons name="checkmark-circle" size={22} color="#00C853" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDecline(req.id)}>
-                            <Ionicons name="close-circle" size={22} color="#FF1744" />
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <>
-                          {req.receiver?.avatar_url ? (
-                            <Image source={{ uri: req.receiver.avatar_url }} style={styles.dropdownAvatar} />
-                          ) : (
-                            <View style={[styles.dropdownAvatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                              <Ionicons name="person" size={20} color="#888" />
+                            <TouchableOpacity
+                              onPress={() => handleAccept(req.id, req.sender?.id)}
+                              style={{
+                                backgroundColor: '#3797EF', // Instagram blue
+                                borderRadius: 16,
+                                paddingVertical: 4,
+                                paddingHorizontal: 18,
+                                marginRight: 6,
+                              }}
+                            >
+                              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>Accept</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleDecline(req.id)}
+                              style={{
+                                backgroundColor: '#FFF',
+                                borderRadius: 16,
+                                borderWidth: 1.5,
+                                borderColor: '#FF1744',
+                                paddingVertical: 4,
+                                paddingHorizontal: 18,
+                              }}
+                            >
+                              <Text style={{ color: '#FF1744', fontWeight: 'bold', fontSize: 14 }}>Reject</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <>
+                            {req.receiver?.avatar_url ? (
+                              <Image source={{ uri: req.receiver.avatar_url }} style={styles.dropdownAvatar} />
+                            ) : (
+                              <View style={[styles.dropdownAvatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                                <Ionicons name="person" size={20} color="#888" />
+                              </View>
+                            )}
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                              <Text style={{ color: '#fff', fontWeight: '600' }}>{req.receiver?.display_name || req.receiver?.username || 'Unknown'}</Text>
+                              <Text style={{ color: '#888', fontSize: 13 }}>@{req.receiver?.username || ''}</Text>
                             </View>
-                          )}
-                          <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={{ color: '#fff', fontWeight: '600' }}>{req.receiver?.display_name || req.receiver?.username || 'Unknown'}</Text>
-                            <Text style={{ color: '#888', fontSize: 13 }}>@{req.receiver?.username || ''}</Text>
-                          </View>
-                          <TouchableOpacity onPress={async () => {
-                            // Cancel outgoing request
-                            await supabase.from('friends').delete().eq('id', req.id);
-                            // Instantly update state and rerun search
-                            const updatedOutgoing = outgoingRequests.filter(r => r.id !== req.id);
-                            setOutgoingRequests(updatedOutgoing);
-                            runAddFriendSearch(searchQueryAdd, friends, friendRequests, updatedOutgoing);
-                          }}>
-                            <Ionicons name="close-circle" size={22} color="#FF1744" right={20} />
-                          </TouchableOpacity>
-                        </>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
+                            <TouchableOpacity
+                              onPress={async () => {
+                                // Cancel outgoing request
+                                await supabase.from('friends').delete().eq('id', req.id);
+                                // Instantly update state and rerun search
+                                const updatedOutgoing = outgoingRequests.filter(r => r.id !== req.id);
+                                setOutgoingRequests(updatedOutgoing);
+                                runAddFriendSearch(searchQueryAdd, friends, friendRequests, updatedOutgoing);
+                              }}
+                              style={{
+                                backgroundColor: '#FF1744',
+                                borderRadius: 16,
+                                paddingVertical: 4,
+                                paddingHorizontal: 14,
+                                marginRight: 10,
+                              }}
+                            >
+                              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>Cancel</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </View>
+                    ))}
+                  </Animated.View>
+                )}
+              </View>
             </View>
           )}
 

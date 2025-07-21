@@ -24,11 +24,53 @@ export async function searchUsers(search: string, currentUserId: string, exclude
  * @param {string} targetUserId - The receiver's profile id.
  */
 export async function sendFriendRequest(currentUserId: string, targetUserId: string) {
-  return await supabase
+  const { error } = await supabase
     .from('friends')
     .insert([
       { user_id: currentUserId, friend_id: targetUserId, status: 'pending' }
     ]);
+  // Fetch sender's display name or username
+  const { data: senderProfile } = await supabase
+    .from('profiles')
+    .select('display_name, username')
+    .eq('id', currentUserId)
+    .single();
+  const senderName = senderProfile?.display_name || senderProfile?.username || 'Someone';
+  // Send push notification to recipient
+  await sendFriendRequestPushNotification(targetUserId, senderName);
+  return { error };
+}
+
+/**
+ * Send a push notification to the recipient when a friend request is sent.
+ * @param {string} recipientId - The user ID of the friend request recipient.
+ * @param {string} senderName - The display name or username of the sender.
+ */
+export async function sendFriendRequestPushNotification(recipientId: string, senderName: string) {
+  // Fetch the recipient's push token
+  const { data: recipient, error } = await supabase
+    .from('profiles')
+    .select('expo_push_token')
+    .eq('id', recipientId)
+    .single();
+  if (error || !recipient?.expo_push_token) {
+    console.error('Error fetching recipient push token:', error);
+    return;
+  }
+  // Send the push notification
+  await fetch('https://shrxvavaoijxtivhixfk.functions.supabase.co/send-push-notification', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // 'Authorization': `Bearer ${userJWT}`,
+    },
+    body: JSON.stringify({
+      to: recipient.expo_push_token,
+      title: 'New Friend Request',
+      body: `${senderName} sent you a friend request!`,
+      data: { type: 'friend_request' },
+    }),
+  });
 }
 
 /**
