@@ -2,6 +2,7 @@ import EventCard from '@/components/EventCard'; // Adjusted path
 import FilterBar from '@/components/FilterBar'; // Adjusted path
 import { useAuth } from '@/contexts/AuthContext';
 import { useEvents } from '@/contexts/EventsContext';
+import { registerForPushNotificationsAsync } from '@/hooks/useRegisterForPushNotifications';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -50,6 +51,12 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     refreshEvents();
   }, [refreshEvents]);
+
+  useEffect(() => {
+    if (user?.id) {
+      registerForPushNotificationsAsync(user.id);
+    }
+  }, [user?.id]);
 
   // Filter events based on selectedFilter
   const filteredEvents = React.useMemo(() => {

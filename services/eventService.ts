@@ -228,7 +228,15 @@ export const eventService = {
       console.error('Error adding attendee', error);
       return false;
     }
-    
+    // Fetch RSVP user's display name or username
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('display_name, username')
+      .eq('id', userId)
+      .single();
+    const rsvpUserName = userProfile?.display_name || userProfile?.username || 'Someone';
+    // Send RSVP push notification to event creator
+    await sendRSVPPushNotification(eventId, rsvpUserName);
     return true;
   },
   
@@ -522,5 +530,82 @@ export const eventService = {
       console.error('Error updating event:', error);
       return null;
     }
-  },
+  }
 };
+
+/**
+ * Send a push notification to all users when a new event is created.
+ * @param {string} eventTitle - The title of the new event.
+ * @param {string} eventId - The ID of the new event (optional, for deep linking).
+ */
+export async function sendNewEventPushNotification(eventTitle: string, eventId?: string) {
+  // Fetch all user push tokens
+  const { data: users, error } = await supabase
+    .from('profiles')
+    .select('expo_push_token')
+    .not('expo_push_token', 'is', null);
+  if (error) {
+    console.error('Error fetching user push tokens:', error);
+    return;
+  }
+  // Send notification to each user
+  for (const user of users) {
+    if (!user.expo_push_token) continue;
+    await fetch('https://shrxvavaoijxtivhixfk.functions.supabase.co/send-push-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // 'Authorization': `Bearer ${userJWT}`, // If calling from client, use user JWT
+        // For server-to-server, use service role key (never in client)
+      },
+      body: JSON.stringify({
+        to: user.expo_push_token,
+        title: 'New Event!',
+        body: `A new event "${eventTitle}" has just been created. Check it out!`,
+        data: { type: 'new_event', eventId },
+      }),
+    });
+  }
+}
+
+/**
+ * Send a push notification to the event creator when someone RSVPs to their event.
+ * @param {string} eventId - The ID of the event.
+ * @param {string} rsvpUserName - The name of the user who RSVPed.
+ */
+export async function sendRSVPPushNotification(eventId: string, rsvpUserName: string) {
+  // Fetch the event to get the creator_id
+  const { data: event, error: eventError } = await supabase
+    .from('events')
+    .select('id, title, creator_id')
+    .eq('id', eventId)
+    .single();
+  if (eventError || !event) {
+    console.error('Error fetching event for RSVP push:', eventError);
+    return;
+  }
+  // Fetch the creator's push token
+  const { data: creator, error: creatorError } = await supabase
+    .from('profiles')
+    .select('expo_push_token')
+    .eq('id', event.creator_id)
+    .single();
+  if (creatorError || !creator?.expo_push_token) {
+    console.error('Error fetching creator push token:', creatorError);
+    return;
+  }
+  // Send the push notification
+  await fetch('https://shrxvavaoijxtivhixfk.functions.supabase.co/send-push-notification', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // 'Authorization': `Bearer ${userJWT}`,
+    },
+    body: JSON.stringify({
+      to: creator.expo_push_token,
+      title: 'New RSVP!',
+      body: `${rsvpUserName} has RSVP'ed to your event "${event.title}"!`,
+      data: { type: 'rsvp', eventId },
+    }),
+  });
+}

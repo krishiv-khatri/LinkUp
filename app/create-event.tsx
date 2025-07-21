@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { eventService } from '@/services/eventService';
+import { eventService, sendNewEventPushNotification } from '@/services/eventService';
 import { imageUploadService } from '@/services/imageUploadService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -8,18 +8,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -169,7 +169,8 @@ export default function CreateEventScreen() {
 
       if (event) {
         toast.success('Event created successfully!');
-        
+        // Send push notification to all users
+        await sendNewEventPushNotification(event.title, event.id);
         // Automatically RSVP the creator to the event
         if (user) {
           await eventService.rsvpToEvent(
@@ -178,7 +179,6 @@ export default function CreateEventScreen() {
             user.avatarUrl || `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id}`
           );
         }
-        
         router.back();
       } else {
         toast.error('Failed to create event');

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Dimensions,
+  Easing,
   Image,
   ScrollView,
   StatusBar,
@@ -12,7 +14,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FriendProfileModal from '../../components/FriendProfileModal';
@@ -51,6 +53,9 @@ export default function FriendsScreen() {
   const router = useRouter();
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  // Use a ref to store Animated.Values for each friend
+  const buttonWidthsRef = useRef<{ [id: string]: Animated.Value }>({});
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -73,6 +78,17 @@ export default function FriendsScreen() {
       .finally(() => setLoadingFriends(false));
   }, [user, authLoading]);
 
+  // Refetch friends when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!user) return;
+      setLoadingFriends(true);
+      getFriendsList(user.id)
+        .then(({ data }) => setFriends(data || []))
+        .finally(() => setLoadingFriends(false));
+    }, [user])
+  );
+
   // Filter friends by search
   const filteredFriends = friends.filter(friend => {
     const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
@@ -88,8 +104,13 @@ export default function FriendsScreen() {
   const handleRemoveFriend = async (friend: Friend) => {
     if (!user) return;
     setLoadingFriends(true);
+    console.log('Attempting to remove friend:', friend);
     // Friendship can be in either direction
-    await supabase.from('friends').delete().eq('id', friend.id).eq('status', 'accepted');
+    const { error, data } = await supabase.from('friends').delete().eq('id', friend.id).eq('status', 'accepted');
+    console.log('Delete result:', { error, data });
+    if (error) {
+      Alert.alert('Error', 'Failed to remove friend: ' + error.message);
+    }
     // Refetch friends
     getFriendsList(user.id)
       .then(({ data }) => setFriends(data || []))
@@ -132,6 +153,30 @@ export default function FriendsScreen() {
     };
   }, [user]);
 
+  // Helper to get or create an Animated.Value for a friend
+  const getButtonWidth = (id: string, initial: number) => {
+    if (!buttonWidthsRef.current[id]) {
+      buttonWidthsRef.current[id] = new Animated.Value(initial);
+    }
+    return buttonWidthsRef.current[id];
+  };
+
+  // Animate the button width when confirmingRemoveId changes
+  useEffect(() => {
+    filteredFriends.forEach(friend => {
+      const isConfirming = removingId === friend.id;
+      // Make button wider for text breathing room
+      const buttonWidth = isConfirming ? 110 : 70;
+      const animatedWidth = getButtonWidth(friend.id, buttonWidth);
+      Animated.timing(animatedWidth, {
+        toValue: buttonWidth,
+        duration: 250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    });
+  }, [removingId, filteredFriends]);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
@@ -143,8 +188,19 @@ export default function FriendsScreen() {
               {/* Optionally add a subtitle here, e.g.: */}
               {/* <Text style={styles.headerSubtitle}>Your connections on LinkUp</Text> */}
             </View>
-            <TouchableOpacity style={styles.headerIconButton} onPress={() => router.push('/addfriends')}>
-              <Ionicons name="person-add" size={28} color="white" />
+            <TouchableOpacity
+              style={styles.addFriendsButton}
+              onPress={() => router.push('/addfriends')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={["#FFFFFF", "#8D8294"]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.addFriendsButtonGradient}
+              >
+                <Text style={styles.addFriendsButtonText}>Add Friends</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
           <View style={styles.searchContainer}>
@@ -162,65 +218,98 @@ export default function FriendsScreen() {
           {loadingFriends ? (
             <Text style={{ color: 'white', paddingHorizontal: 20 }}></Text>
           ) : (
-            <ScrollView
-              style={styles.scrollView}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.scrollContent}
-            >
-              <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}> 
-                {filteredFriends.map((friend) => {
-                  const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
-                  return (
-                    <TouchableOpacity
-                      key={friend.id}
-                      style={styles.friendCard}
-                      activeOpacity={0.8}
-                      onPress={() => {
-                        setSelectedFriend(profile ?? null);
-                        setModalVisible(true);
-                      }}
-                    >
-                      <View style={styles.friendInfo}>
-                        {profile?.avatar_url ? (
-                          <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-                        ) : (
-                          <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                            <Ionicons name="person" size={28} color="#888" />
+            <View style={{ flex: 1 }}>
+              <ScrollView
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+              >
+                <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}> 
+                  {filteredFriends.map((friend) => {
+                    const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+                    // Remove are you sure logic, just a simple remove button
+                    const buttonText = 'Remove';
+                    const buttonColor = '#FF1744';
+                    const buttonTextColor = '#FFF';
+                    // Make button wider for text breathing room
+                    const buttonWidth = 70;
+                    const animatedWidth = getButtonWidth(friend.id, buttonWidth);
+
+                    return (
+                      <TouchableOpacity
+                        key={friend.id}
+                        style={styles.friendCard}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setSelectedFriend(profile ?? null);
+                          setModalVisible(true);
+                        }}
+                      >
+                        <View style={styles.friendInfo}>
+                          {profile?.avatar_url ? (
+                            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                          ) : (
+                            <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                              <Ionicons name="person" size={28} color="#888" />
+                            </View>
+                          )}
+                          <View style={styles.friendDetails}>
+                            <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
+                            <Text style={styles.friendUsername}>@{profile?.username}</Text>
                           </View>
-                        )}
-                        <View style={styles.friendDetails}>
-                          <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
-                          <Text style={styles.friendUsername}>@{profile?.username}</Text>
                         </View>
-                      </View>
-                      <TouchableOpacity onPress={() => handleRemoveFriend(friend)} style={styles.addButton}>
-                        <LinearGradient colors={['#FF1744', '#FF6B6B']} style={styles.addButtonGradient}>
-                          <Ionicons name="person-remove" size={16} color="white" />
-                        </LinearGradient>
+                        <View style={{
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginRight: 0,
+                        }}>
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            style={{
+                              backgroundColor: buttonColor,
+                              borderRadius: 20,
+                              paddingVertical: 6,
+                              paddingHorizontal: 18,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: 80,
+                              opacity: removingId === friend.id ? 0.5 : 1,
+                            }}
+                            disabled={removingId === friend.id}
+                            onPress={async (e) => {
+                              e.stopPropagation?.();
+                              setRemovingId(friend.id);
+                              await handleRemoveFriend(friend);
+                              setRemovingId(null);
+                            }}
+                          >
+                            <Text style={{ color: buttonTextColor, fontWeight: 'bold', fontSize: 14 }}>{buttonText}</Text>
+                          </TouchableOpacity>
+                        </View>
                       </TouchableOpacity>
-                    </TouchableOpacity>
-                  );
-                })}
-              </Animated.View>
-              <View style={styles.planningSection}>
-                <View style={styles.planningSectionHeader}>
-                  <Text style={styles.planningSectionTitle}>PLANNING</Text>
+                    );
+                  })}
+                </Animated.View>
+                <View style={styles.planningSection}>
+                  <View style={styles.planningSectionHeader}>
+                    <Text style={styles.planningSectionTitle}>PLANNING</Text>
+                  </View>
+                  <View style={styles.planningCard}>
+                    <LinearGradient
+                      colors={['#8338EC', '#FF006E']}
+                      style={styles.planningGradient}
+                    >
+                      <View style={styles.planningContent}>
+                        <Text style={styles.planningTitle}>Chillhop Night</Text>
+                        <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
+                        <Text style={styles.planningLocation}>Central</Text>
+                      </View>
+                    </LinearGradient>
+                  </View>
                 </View>
-                <View style={styles.planningCard}>
-                  <LinearGradient
-                    colors={['#8338EC', '#FF006E']}
-                    style={styles.planningGradient}
-                  >
-                    <View style={styles.planningContent}>
-                      <Text style={styles.planningTitle}>Chillhop Night</Text>
-                      <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
-                      <Text style={styles.planningLocation}>Central</Text>
-                    </View>
-                  </LinearGradient>
-                </View>
-              </View>
-              <View style={styles.bottomSpacing} />
-            </ScrollView>
+                <View style={styles.bottomSpacing} />
+              </ScrollView>
+            </View>
           )}
           <FriendProfileModal
             visible={modalVisible}
@@ -379,5 +468,28 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+  addFriendsButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginLeft: 8,
+    marginTop: 2,
+  },
+  addFriendsButtonGradient: {
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFriendsButtonText: {
+    color: '#111',
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
 }); 
