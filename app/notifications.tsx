@@ -194,7 +194,7 @@ export default function NotificationsScreen() {
   const filteredNotifications = notifications.filter(n =>
     n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     n.body.toLowerCase().includes(searchQuery.toLowerCase())
-  ).reverse(); // Most recent at the top
+  ); // Most recent at the top
 
   return (
     <View style={styles.container}>

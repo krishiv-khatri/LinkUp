@@ -534,8 +534,7 @@ export const eventService = {
       return null;
     }
   }
-<<<<<<< HEAD
-}; 
+};
 
 /**
  * Send a push notification to all users when a new event is created.
@@ -570,7 +569,7 @@ export async function sendNewEventPushNotification(eventTitle: string, eventId?:
       }),
     });
   }
-} 
+}
 
 /**
  * Send a push notification to the event creator when someone RSVPs to their event.
@@ -612,7 +611,4 @@ export async function sendRSVPPushNotification(eventId: string, rsvpUserName: st
       data: { type: 'rsvp', eventId },
     }),
   });
-} 
-=======
-};
->>>>>>> a57181592bcaede5ebfc02185e0d6d3fa099854f
+}

@@ -1,10 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
-<<<<<<< HEAD
 import { eventService, sendNewEventPushNotification } from '@/services/eventService';
-=======
-import { eventService } from '@/services/eventService';
 import { imageUploadService } from '@/services/imageUploadService';
->>>>>>> a57181592bcaede5ebfc02185e0d6d3fa099854f
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';

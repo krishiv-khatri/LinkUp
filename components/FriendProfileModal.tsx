@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { Animated, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NativeViewGestureHandler } from 'react-native-gesture-handler';
@@ -180,41 +181,52 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
             <Ionicons name="close" size={28} color="#FFF" />
           </TouchableOpacity>
          {/* Top row: avatar, name, socials */}
-         <View style={{ flexDirection: 'row', width: '100%', alignItems: 'flex-start', marginBottom: 20 }}>
-            {/* Avatar, username, and socials */}
+         <View style={{ flexDirection: 'row', width: '100%', alignItems: 'flex-start', marginBottom: 0 }}>
+            {/* Avatar and username ONLY */}
             <View style={{ alignItems: 'center', width: 90 }}>
               <Image source={{ uri: friend.avatar_url }} style={[styles.avatar, { marginBottom: 4, width: 64, height: 64 }]} />
               <Text style={[styles.username, { marginBottom: 8, marginTop: 0, fontSize: 14 }]}>@{friend.username}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14 }}>
-                {friendSocialHandles.map((social, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={{ marginLeft: index === 0 ? 0 : 4 }}
-                    onPress={() => handleSocialPress(social.platform, social.handle)}
-                  >
-                    <Ionicons name={social.icon as any} size={20} color={social.color} />
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
-            {/* Name and stats */}
-            <View style={{ flex: 1, alignItems: 'flex-start', justifyContent: 'flex-start' , marginLeft: 20}}>
-              <Text style={[styles.name, { marginBottom: 2, marginTop: 0 }]}>{friend.display_name || friend.username}</Text>
-              <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600', marginTop: 10 }}>
-                {friendCount === 1
-                  ? '1 friend'
-                  : `${friendCount ?? '-'} friends`}
-              </Text>
-              <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600', marginTop: 10 }}>
-                {attendedCount === 1
-                  ? '1 event attended'
-                  : `${attendedCount ?? '-'} events attended`}
-              </Text>
+
+            {/* Name, stats, and socials */}
+            <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'flex-start' , marginLeft: 20}}>
+              <Text style={[styles.name, { marginBottom: 12, marginTop: 0 }]}>{friend.display_name || friend.username}</Text>
+
+              {/* Container for stats and socials */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                {/* Stats */}
+                <View>
+                  <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600' }}>
+                    {friendCount === 1
+                      ? '1 friend'
+                      : `${friendCount ?? '-'} friends`}
+                  </Text>
+                  <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600', marginTop: 4 }}>
+                    {attendedCount === 1
+                      ? '1 event attended'
+                      : `${attendedCount ?? '-'} events attended`}
+                  </Text>
+                </View>
+
+                {/* Social Icons */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 16 }}>
+                  {friendSocialHandles.map((social, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => handleSocialPress(social.platform, social.handle)}
+                    >
+                      <Ionicons name={social.icon as any} size={22} color={social.color} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
             </View>
           </View>
 
+          <View style={styles.divider} />
+
           <Text style={styles.sectionTitle}>{firstName}'s Plans:</Text>
-          <View style={{ maxHeight: 200, width: '100%' }}>
+          <View style={{ maxHeight: 240, width: '100%' }}>
             <NativeViewGestureHandler>
               <ScrollView
                 style={{ width: '100%' }}
@@ -286,10 +298,15 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
                 </View>
               </ScrollView>
             </NativeViewGestureHandler>
+            <LinearGradient
+              colors={['rgba(26, 26, 26, 0)', '#1A1A1A']}
+              style={styles.fadeGradient}
+              pointerEvents="none"
+            />
           </View>
           {/* Attended (past) events section */}
           <Text style={styles.sectionTitle}>{firstName} Attended:</Text>
-          <View style={{ maxHeight: 220, width: '100%' }}>
+          <View style={{ maxHeight: 240, width: '100%' }}>
             <NativeViewGestureHandler>
               <ScrollView
                 style={{ width: '100%' }}
@@ -361,6 +378,11 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
                 </View>
               </ScrollView>
             </NativeViewGestureHandler>
+            <LinearGradient
+              colors={['rgba(26, 26, 26, 0)', '#1A1A1A']}
+              style={styles.fadeGradient}
+              pointerEvents="none"
+            />
           </View>
         </View>
       </View>
@@ -453,11 +475,19 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: 'white',
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
   },
   username: {
     fontSize: 16,
     color: '#888',
     marginBottom: 16,
+  },
+  divider: {
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 12,
   },
   sectionTitle: {
     fontSize: 18,
@@ -608,5 +638,12 @@ const styles = StyleSheet.create({
   swipeModal: {
     justifyContent: 'flex-end',
     margin: 0,
+  },
+  fadeGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
   },
 }); 

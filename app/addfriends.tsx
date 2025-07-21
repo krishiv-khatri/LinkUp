@@ -3,16 +3,14 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing } from 'react-native';
 import {
-    ActivityIndicator,
-    Image,
+    ActivityIndicator, Animated, Easing, Image,
     StatusBar,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -394,7 +392,6 @@ export default function AddFriendsScreen() {
                       </View>
                     ))}
                   </Animated.View>
-                )}
               </View>
             </View>
           )}
