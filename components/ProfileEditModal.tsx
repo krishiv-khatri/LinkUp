@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
+import { imageUploadService } from '@/services/imageUploadService';
 import {
   ActivityIndicator,
   Alert,
@@ -145,7 +146,17 @@ export default function ProfileEditModal({ visible, onClose, onSave }: ProfileEd
       });
 
       if (!result.canceled && result.assets[0]) {
-        setAvatarUrl(result.assets[0].uri);
+        const localUri = result.assets[0].uri;
+        
+        // Upload image to Supabase Storage
+        const uploadResult = await imageUploadService.uploadProfilePicture(localUri, user?.id || '');
+        
+        if (uploadResult.success && uploadResult.publicUrl) {
+          setAvatarUrl(uploadResult.publicUrl);
+        } else {
+          console.error('Image upload failed:', uploadResult.error);
+          Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload your profile picture. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);

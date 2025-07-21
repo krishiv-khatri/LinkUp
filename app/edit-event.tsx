@@ -1,5 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
+import { imageUploadService } from '@/services/imageUploadService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -133,32 +134,17 @@ export default function EditEventScreen() {
     try {
       setIsUploadingImage(true);
       
-      const fileExtension = imageUri.split('.').pop();
-      const fileName = `event-${Date.now()}.${fileExtension}`;
+      // Upload using our centralized image upload service
+      const uploadResult = await imageUploadService.uploadEventCover(imageUri);
       
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      
-      const { supabase } = await import('@/lib/supabase');
-      const { data, error } = await supabase.storage
-        .from('event-images')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          upsert: false
-        });
-      
-      if (error) {
-        console.error('Upload error:', error);
-        toast.error('Failed to upload image');
+      if (uploadResult.success && uploadResult.publicUrl) {
+        setUploadedImageUrl(uploadResult.publicUrl);
+        return uploadResult.publicUrl;
+      } else {
+        console.error('Upload error:', uploadResult.error);
+        toast.error(uploadResult.error || 'Failed to upload image');
         return null;
       }
-      
-      const { data: { publicUrl } } = supabase.storage
-        .from('event-images')
-        .getPublicUrl(fileName);
-      
-      setUploadedImageUrl(publicUrl);
-      return publicUrl;
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Failed to upload image');
@@ -171,6 +157,11 @@ export default function EditEventScreen() {
   const handleUpdateEvent = async () => {
     if (!title || !time || !location || !category || !description) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    if (!eventId) {
+      toast.error('Event ID is missing');
       return;
     }
 
@@ -195,13 +186,14 @@ export default function EditEventScreen() {
         description,
       };
       
+      console.log('Updating event with ID:', eventId, 'and updates:', updates);
       const updatedEvent = await eventService.updateEvent(eventId, updates);
 
       if (updatedEvent) {
         toast.success('Event updated successfully!');
         router.back();
       } else {
-        toast.error('Failed to update event');
+        toast.error('Failed to update event - event may not exist');
       }
     } catch (error) {
       console.error('Error updating event:', error);
@@ -446,7 +438,6 @@ export default function EditEventScreen() {
                   <ActivityIndicator color="white" />
                 ) : (
                   <>
-                    <Ionicons name="save" size={20} color="white" style={styles.buttonIcon} />
                     <Text style={styles.buttonText}>Update Event</Text>
                   </>
                 )}

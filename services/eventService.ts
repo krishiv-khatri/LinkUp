@@ -440,6 +440,18 @@ export const eventService = {
   // Delete an event
   async deleteEvent(eventId: string): Promise<boolean> {
     try {
+      // First check if the event exists
+      const { data: existingEvent, error: checkError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('id', eventId)
+        .single();
+      
+      if (checkError || !existingEvent) {
+        console.error('Event not found for deletion:', eventId, checkError);
+        return false;
+      }
+
       // First, delete all attendees for this event
       const { error: attendeesError } = await supabase
         .from('attendees')
@@ -472,6 +484,18 @@ export const eventService = {
   // Update an event
   async updateEvent(eventId: string, updates: Partial<Omit<Event, 'id' | 'attendingFriends' | 'attendingCount'>>): Promise<Event | null> {
     try {
+      // First check if the event exists
+      const { data: existingEvent, error: checkError } = await supabase
+        .from('events')
+        .select('id')
+        .eq('id', eventId)
+        .single();
+      
+      if (checkError || !existingEvent) {
+        console.error('Event not found:', eventId, checkError);
+        return null;
+      }
+
       const { data, error } = await supabase
         .from('events')
         .update({
@@ -510,6 +534,7 @@ export const eventService = {
       return null;
     }
   }
+<<<<<<< HEAD
 }; 
 
 /**
@@ -588,3 +613,6 @@ export async function sendRSVPPushNotification(eventId: string, rsvpUserName: st
     }),
   });
 } 
+=======
+};
+>>>>>>> a57181592bcaede5ebfc02185e0d6d3fa099854f

@@ -2,6 +2,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { imageUploadService } from '@/services/imageUploadService';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -15,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OnboardingPictureScreen() {
-  const { updateProfile } = useAuth();
+  const { updateProfile, user } = useAuth();
   const params = useLocalSearchParams();
   
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
@@ -47,7 +48,22 @@ export default function OnboardingPictureScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setSelectedAvatar(result.assets[0].uri);
+        const localUri = result.assets[0].uri;
+        
+        try {
+          // Upload image to Supabase Storage
+          const uploadResult = await imageUploadService.uploadProfilePicture(localUri, user?.id || '');
+          
+          if (uploadResult.success && uploadResult.publicUrl) {
+            setSelectedAvatar(uploadResult.publicUrl);
+          } else {
+            console.error('Image upload failed:', uploadResult.error);
+            Alert.alert('Upload Failed', uploadResult.error || 'Failed to upload your profile picture. Please try again.');
+          }
+        } catch (error) {
+          console.error('Image upload error:', error);
+          Alert.alert('Upload Failed', 'Failed to upload your profile picture. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);

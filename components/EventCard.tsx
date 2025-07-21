@@ -1,19 +1,22 @@
+import AttendeesList from '@/components/AttendeesList';
+import ProgressiveImage from '@/components/ProgressiveImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
-import { imagePreloader } from '@/utils/imagePreloader';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -75,12 +78,13 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRSVPed, setIsRSVPed] = useState(initialRSVPed || false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [imageLoadError, setImageLoadError] = useState(false);
+  const [attendees, setAttendees] = useState<any[]>([]);
+  const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [isModalImageLoaded, setIsModalImageLoaded] = useState(false);
   const [modalImageLoadError, setModalImageLoadError] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const rsvpAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Staggered entrance animation
@@ -107,20 +111,9 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
       ])
     ).start();
 
-    // Preload images for this card and attendee avatars
-    const imagesToPreload = [
-      event.coverImage,
-      ...event.attendingFriends.filter(avatar => avatar && typeof avatar === 'string')
-    ];
-    imagePreloader.preloadImages(imagesToPreload, index < 3 ? 'high' : 'low');
-
-    // Check if main image is already cached
-    setIsImageLoaded(imagePreloader.isImageCached(event.coverImage));
-    setImageLoadError(imagePreloader.isImageFailed(event.coverImage));
-    
-    // Also set modal image state based on cache
-    setIsModalImageLoaded(imagePreloader.isImageCached(event.coverImage));
-    setModalImageLoadError(imagePreloader.isImageFailed(event.coverImage));
+    // Set modal image state
+    setIsModalImageLoaded(false);
+    setModalImageLoadError(false);
 
     // Only check attendance if not provided as prop
     if (initialRSVPed === undefined) {
@@ -134,36 +127,45 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
     }
   }, [user, event.id, event.coverImage, event.attendingFriends, index, initialRSVPed]);
 
-  // When modal opens, ensure image is preloaded with high priority
+  // When modal opens, set image state
   useEffect(() => {
     if (isExpanded && !isModalImageLoaded && !modalImageLoadError) {
-      // More aggressive preloading when modal opens
-      console.log('🖼️ Aggressively preloading modal image:', event.coverImage);
-      imagePreloader.preloadSingleImage(event.coverImage).then((success) => {
-        console.log('✅ Modal image preload result:', success);
-        if (success) {
-          setIsModalImageLoaded(true);
-          setModalImageLoadError(false);
-        } else {
-          setModalImageLoadError(true);
-        }
-      });
+      // Set modal image as loaded for direct rendering
+      setIsModalImageLoaded(true);
+      setModalImageLoadError(false);
     }
   }, [isExpanded, event.coverImage, isModalImageLoaded, modalImageLoadError]);
+
+  // Load attendees for the event
+  const loadAttendees = async () => {
+    if (!event) return;
+    
+    setLoadingAttendees(true);
+    try {
+      const attendeesList = await eventService.getAttendees(event.id);
+      setAttendees(attendeesList);
+    } catch (error) {
+      console.error('Error loading attendees:', error);
+    } finally {
+      setLoadingAttendees(false);
+    }
+  };
 
   // Handle card press with immediate image preparation
   const handleCardPress = () => {
     console.log('🎯 Card pressed, preparing modal image...');
     
-    // Start aggressive preloading immediately when card is pressed
-    if (!imagePreloader.isImageCached(event.coverImage)) {
-      console.log('📥 Image not cached, starting immediate preload...');
-      imagePreloader.preloadSingleImage(event.coverImage);
+    setIsModalImageLoaded(true);
+    
+    // Initialize RSVP animation state based on current RSVP status
+    if (isRSVPed) {
+      rsvpAnim.setValue(1);
     } else {
-      console.log('✅ Image already cached!');
-      setIsModalImageLoaded(true);
+      rsvpAnim.setValue(0);
     }
     
+    // Load attendees when modal opens
+    loadAttendees();
     setIsExpanded(true);
   };
 
@@ -182,14 +184,15 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           setIsRSVPed(false);
           toast.success('RSVP cancelled');
           
-          // Update the attendee count by fetching the current count
-          const newCount = await eventService.getAttendeeCount(event.id);
-          event.attendingCount = newCount;
+          // Animate RSVP button back to normal
+          Animated.timing(rsvpAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: false,
+          }).start();
           
-          // Remove user's avatar from the attending friends list
-          const userAvatar = user.avatarUrl || 
-            `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id.slice(0, 8)}`;
-          event.attendingFriends = event.attendingFriends.filter(avatar => avatar !== userAvatar);
+          // Refresh attendees
+          loadAttendees();
         } else {
           toast.error('Failed to cancel RSVP');
         }
@@ -202,16 +205,16 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
         
         if (success) {
           setIsRSVPed(true);
-          toast.success('You\'re going! 🎉');
           
-          // Update the attendee count by fetching the current count
-          const newCount = await eventService.getAttendeeCount(event.id);
-          event.attendingCount = newCount;
+          // Animate RSVP button with smooth gradient
+          Animated.timing(rsvpAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: false,
+          }).start();
           
-          // Add user's avatar to the attending friends list if not already there
-          if (!event.attendingFriends.includes(avatarUrl)) {
-            event.attendingFriends = [avatarUrl, ...event.attendingFriends].slice(0, 5);
-          }
+          // Refresh attendees
+          loadAttendees();
         } else {
           toast.error('Failed to RSVP');
         }
@@ -255,34 +258,13 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           </Animated.View>
 
           <View style={styles.cardContent}>
-            {/* Image loading placeholder */}
-            {!isImageLoaded && !imageLoadError && (
-              <View style={[styles.coverImage, styles.imagePlaceholder]}>
-                <ActivityIndicator size="small" color="#FF006E" />
-                <Text style={styles.loadingText}>Loading image...</Text>
-              </View>
-            )}
-            
-            {/* Error placeholder */}
-            {imageLoadError && (
-              <View style={[styles.coverImage, styles.imagePlaceholder]}>
-                <Ionicons name="image-outline" size={32} color="#666" />
-                <Text style={styles.errorText}>Image unavailable</Text>
-              </View>
-            )}
-            
-            {/* Main cover image */}
-            <Image 
-              source={{ uri: event.coverImage }} 
-              style={[styles.coverImage, { opacity: isImageLoaded ? 1 : 0 }]}
-              onLoad={() => {
-                setIsImageLoaded(true);
-                setImageLoadError(false);
-              }}
-              onError={() => {
-                setIsImageLoaded(false);
-                setImageLoadError(true);
-              }}
+            {/* Progressive cover image */}
+            <ProgressiveImage
+              source={{ uri: event.coverImage }}
+              style={styles.coverImage}
+              fadeDuration={250}
+              thumbnailSize={150}
+              blurRadius={2}
             />
             
             <LinearGradient
@@ -356,27 +338,30 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
         onRequestClose={() => setIsExpanded(false)}
       >
         <View style={styles.modalContainer}>
+          {/* Backdrop blur effect */}
+          <View style={styles.modalBackdrop} />
+          
           <View style={styles.modalHeader}>
             <TouchableOpacity 
               onPress={() => setIsExpanded(false)}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={24} color="white" />
+              <Ionicons name="close" size={20} color="#ffffff" />
             </TouchableOpacity>
           </View>
 
           {/* Image loading placeholder for modal */}
           {!isModalImageLoaded && !modalImageLoadError && (
             <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <ActivityIndicator size="large" color="#FF006E" />
-              <Text style={styles.loadingText}>Loading image...</Text>
+              <ActivityIndicator size="large" color="#888" />
+              <Text style={styles.loadingText}>Loading...</Text>
             </View>
           )}
           
           {/* Error placeholder for modal */}
           {modalImageLoadError && (
             <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <Ionicons name="image-outline" size={48} color="#666" />
+              <Ionicons name="image-outline" size={32} color="#666" />
               <Text style={styles.errorText}>Image unavailable</Text>
             </View>
           )}
@@ -407,53 +392,124 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
           />
           
           <LinearGradient
-            colors={['transparent', 'rgba(10,10,10,0.95)']}
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.modalOverlay}
           />
 
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{event.title}</Text>
+          <ScrollView 
+            style={styles.modalContent} 
+            contentContainerStyle={styles.modalContentContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.modalTitleSection}>
+              <Text style={styles.modalTitle}>{event.title}</Text>
+              <View style={styles.categoryIndicator}>
+                <Ionicons 
+                  name={getCategoryIcon(event.category)} 
+                  size={14} 
+                  color="#888" 
+                />
+                <Text style={styles.categoryText}>{event.category}</Text>
+              </View>
+            </View>
+            
             <Text style={styles.modalDescription}>{event.description}</Text>
+            
+            {/* Who's Going Section */}
+            <View style={styles.attendeesSection}>
+              <View style={styles.attendeesTitleRow}>
+                <Text style={styles.attendeesTitle}>Who's Going</Text>
+                {event.attendingCount > 0 && (
+                  <View style={styles.attendeesBadge}>
+                    <Text style={styles.attendeesBadgeText}>{event.attendingCount}</Text>
+                  </View>
+                )}
+              </View>
+              
+              {loadingAttendees ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#888" />
+                </View>
+              ) : (
+                <AttendeesList 
+                  attendees={attendees} 
+                  totalCount={event.attendingCount} 
+                />
+              )}
+            </View>
             
             <View style={styles.modalDetails}>
               <View style={styles.modalDetailItem}>
-                <Ionicons name="calendar" size={20} color="#FF006E" />
+                <Ionicons name="calendar-outline" size={16} color="#888" />
                 <Text style={styles.modalDetailText}>{new Date(event.date).toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
+                  weekday: 'short', 
+                  month: 'short', 
                   day: 'numeric' 
                 })}</Text>
               </View>
               <View style={styles.modalDetailItem}>
-                <Ionicons name="time" size={20} color="#FF006E" />
+                <Ionicons name="time-outline" size={16} color="#888" />
                 <Text style={styles.modalDetailText}>{event.time}</Text>
               </View>
               <View style={styles.modalDetailItem}>
-                <Ionicons name="location" size={20} color="#FF006E" />
+                <Ionicons name="location-outline" size={16} color="#888" />
                 <Text style={styles.modalDetailText}>{event.location}</Text>
               </View>
             </View>
 
-            <TouchableOpacity 
-              style={[styles.rsvpButton, isRSVPed && styles.rsvpButtonActive]}
-              onPress={handleRSVP}
-            >
-              <LinearGradient
-                colors={isRSVPed ? ['#00C853', '#4CAF50'] : getCategoryGradient(event.category)}
-                style={styles.rsvpGradient}
-              >
-                <Ionicons 
-                  name={isRSVPed ? "checkmark-circle" : "add-circle"} 
-                  size={20} 
-                  color="white" 
-                />
-                <Text style={styles.rsvpButtonText}>
-                  {isRSVPed ? "You're Going!" : "RSVP"}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+            <View style={styles.actionButtons}>
+              {user && event.creator_id === user.id ? (
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => {
+                    setIsExpanded(false);
+                    router.push(`/edit-event?eventId=${event.id}`);
+                  }}
+                >
+                  <View style={styles.editButtonContent}>
+                    <Ionicons name="create-outline" size={16} color="#000000" />
+                    <Text style={styles.editButtonText}>Edit Event</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.rsvpButton}
+                  onPress={handleRSVP}
+                  disabled={isLoading}
+                >
+                  <Animated.View style={[
+                    styles.rsvpButtonBackground,
+                    {
+                      opacity: rsvpAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 1],
+                      })
+                    }
+                  ]} />
+                  <View style={styles.rsvpButtonContent}>
+                    {isLoading ? (
+                      <ActivityIndicator color="#000000" size="small" />
+                    ) : (
+                      <Text style={[
+                        styles.rsvpButtonText,
+                        isRSVPed && styles.rsvpButtonTextGoing
+                      ]}>
+                        {isRSVPed ? 'Going' : 'RSVP'}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity style={styles.shareButton}>
+                <Ionicons name="share-outline" size={16} color="#888" />
+                <Text style={styles.shareButtonText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Add bottom padding for scroll */}
+            <View style={{ height: 40 }} />
+          </ScrollView>
         </View>
       </Modal>
     </>
@@ -576,26 +632,36 @@ const styles = StyleSheet.create({
   // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#000000',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
   modalHeader: {
     position: 'absolute',
     top: 50,
-    right: 20,
+    right: 16,
     zIndex: 10,
   },
   closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    backdropFilter: 'blur(10px)',
   },
   modalImage: {
     width: '100%',
-    height: 300,
+    aspectRatio: 4/3,
     resizeMode: 'cover',
+    maxHeight: 350,
   },
   modalOverlay: {
     position: 'absolute',
@@ -606,54 +672,169 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    padding: 20,
+  },
+  modalContentContainer: {
+    padding: 16,
+    paddingTop: 24,
     justifyContent: 'flex-end',
+    flexGrow: 1,
+  },
+  modalTitleSection: {
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: 'white',
-    marginBottom: 12,
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  categoryIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryText: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   modalDescription: {
-    fontSize: 16,
-    color: '#CCC',
-    lineHeight: 24,
-    marginBottom: 24,
+    fontSize: 15,
+    color: '#cccccc',
+    lineHeight: 22,
+    marginBottom: 20,
+    fontWeight: '400',
   },
   modalDetails: {
-    marginBottom: 32,
-    gap: 12,
+    marginBottom: 24,
+    gap: 8,
   },
   modalDetailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   modalDetailText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: '500',
   },
+  attendeesSection: {
+    marginBottom: 24,
+  },
+  attendeesTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  attendeesTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  attendeesBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  attendeesBadgeText: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
   rsvpButton: {
-    borderRadius: 16,
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     overflow: 'hidden',
-    marginBottom: 20,
+    position: 'relative',
   },
-  rsvpButtonActive: {
-    // Additional styles for active state if needed
+  rsvpButtonBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#22c55e',
+    borderRadius: 12,
   },
-  rsvpGradient: {
+  rsvpButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    gap: 8,
+    gap: 6,
+    zIndex: 1,
+  },
+  rsvpButtonActive: {
+    backgroundColor: '#22c55e',
   },
   rsvpButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '700',
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  rsvpButtonTextActive: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  rsvpButtonTextGoing: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  editButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  editButtonText: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  shareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  shareButtonText: {
+    color: '#888',
+    fontSize: 15,
+    fontWeight: '500',
   },
   imagePlaceholder: {
     justifyContent: 'center',

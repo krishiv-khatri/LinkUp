@@ -1,14 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 interface Attendee {
@@ -67,7 +67,7 @@ export default function AttendeesList({ attendees, totalCount, maxVisible = 4 }:
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Who's Going ({totalCount})</Text>
+            <Text style={styles.modalTitle}>Who's Going</Text>
             <TouchableOpacity onPress={() => setShowModal(false)}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
