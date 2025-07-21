@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
-  View,
-  Image,
-  Animated,
-  StyleSheet,
-  ViewStyle,
-  ImageStyle,
+    Animated,
+    Image,
+    ImageStyle,
+    StyleSheet,
+    View,
+    ViewStyle,
 } from 'react-native';
 
 interface ProgressiveImageProps {

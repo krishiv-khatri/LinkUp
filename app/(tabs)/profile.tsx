@@ -637,6 +637,10 @@ export default function ProfileScreen() {
         visible={showEventModal}
         onClose={() => setShowEventModal(false)}
         showAttendees={true}
+        onEventDeleted={() => {
+          setShowEventModal(false);
+          fetchUserEvents(); // Refresh events list after deletion
+        }}
       />
     </View>
   );

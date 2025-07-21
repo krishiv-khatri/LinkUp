@@ -432,18 +432,8 @@ export const eventService = {
   // Delete an event
   async deleteEvent(eventId: string): Promise<boolean> {
     try {
-      // First check if the event exists
-      const { data: existingEvent, error: checkError } = await supabase
-        .from('events')
-        .select('id')
-        .eq('id', eventId)
-        .single();
+      console.log('Deleting event with ID:', eventId);
       
-      if (checkError || !existingEvent) {
-        console.error('Event not found for deletion:', eventId, checkError);
-        return false;
-      }
-
       // First, delete all attendees for this event
       const { error: attendeesError } = await supabase
         .from('attendees')
@@ -455,17 +445,26 @@ export const eventService = {
         return false;
       }
       
+      console.log('Attendees deleted successfully for event:', eventId);
+      
       // Then delete the event itself
-      const { error: eventError } = await supabase
+      const { data, error: eventError } = await supabase
         .from('events')
         .delete()
-        .eq('id', eventId);
+        .eq('id', eventId)
+        .select();
       
       if (eventError) {
         console.error('Error deleting event:', eventError);
         return false;
       }
       
+      if (!data || data.length === 0) {
+        console.error('No event found to delete with ID:', eventId);
+        return false;
+      }
+      
+      console.log('Event deleted successfully:', data);
       return true;
     } catch (error) {
       console.error('Error deleting event:', error);
@@ -476,18 +475,8 @@ export const eventService = {
   // Update an event
   async updateEvent(eventId: string, updates: Partial<Omit<Event, 'id' | 'attendingFriends' | 'attendingCount'>>): Promise<Event | null> {
     try {
-      // First check if the event exists
-      const { data: existingEvent, error: checkError } = await supabase
-        .from('events')
-        .select('id')
-        .eq('id', eventId)
-        .single();
+      console.log('Updating event with ID:', eventId, 'Updates:', updates);
       
-      if (checkError || !existingEvent) {
-        console.error('Event not found:', eventId, checkError);
-        return null;
-      }
-
       const { data, error } = await supabase
         .from('events')
         .update({
@@ -497,7 +486,8 @@ export const eventService = {
           location: updates.location,
           category: updates.category,
           cover_image: updates.coverImage,
-          description: updates.description
+          description: updates.description,
+          updated_at: new Date().toISOString()
         })
         .eq('id', eventId)
         .select()
@@ -507,6 +497,13 @@ export const eventService = {
         console.error('Error updating event:', error);
         return null;
       }
+      
+      if (!data) {
+        console.error('No event found with ID:', eventId);
+        return null;
+      }
+      
+      console.log('Event updated successfully:', data);
       
       return {
         id: data.id,
@@ -525,5 +522,5 @@ export const eventService = {
       console.error('Error updating event:', error);
       return null;
     }
-  }
+  },
 };

@@ -8,13 +8,13 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -44,6 +44,7 @@ interface EventModalProps {
   visible: boolean;
   onClose: () => void;
   showAttendees?: boolean;
+  onEventDeleted?: () => void;
 }
 
 const getCategoryGradient = (category: string): readonly [string, string] => {
@@ -61,12 +62,13 @@ const getCategoryGradient = (category: string): readonly [string, string] => {
   }
 };
 
-export default function EventModal({ event, visible, onClose, showAttendees = true }: EventModalProps) {
+export default function EventModal({ event, visible, onClose, showAttendees = true, onEventDeleted }: EventModalProps) {
   const { user } = useAuth();
   const [isRSVPed, setIsRSVPed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [attendees, setAttendees] = useState<any[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
 
   useEffect(() => {
@@ -146,6 +148,46 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
     }
   };
 
+  const handleDeleteEvent = async () => {
+    if (!event || !user || event.creator_id !== user.id) {
+      toast.error('You can only delete your own events');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Event',
+      `Are you sure you want to delete "${event.title}"? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const success = await eventService.deleteEvent(event.id);
+              if (success) {
+                toast.success('Event deleted successfully');
+                onClose();
+                onEventDeleted?.();
+              } else {
+                toast.error('Failed to delete event');
+              }
+            } catch (error) {
+              console.error('Delete error:', error);
+              toast.error('Something went wrong while deleting the event');
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (!event) return null;
 
   return (
@@ -165,7 +207,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
           </TouchableOpacity>
         </View>
 
-        {/* Progressive modal image */}
+        {/* Progressive modal image with EventCard aspect ratio */}
         <ProgressiveImage
           source={{ uri: event.coverImage }}
           style={styles.modalImage}
@@ -240,18 +282,34 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
 
           <View style={styles.actionButtons}>
             {user && event.creator_id === user.id ? (
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={() => {
-                  onClose();
-                  router.push(`/edit-event?eventId=${event.id}`);
-                }}
-              >
-                <View style={styles.editButtonContent}>
-                  <Ionicons name="create-outline" size={16} color="#000000" />
-                  <Text style={styles.editButtonText}>Edit Event</Text>
-                </View>
-              </TouchableOpacity>
+              <View style={styles.creatorActions}>
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={() => {
+                    onClose();
+                    router.push(`/edit-event?eventId=${event.id}`);
+                  }}
+                >
+                  <View style={styles.editButtonContent}>
+                    <Ionicons name="create-outline" size={16} color="#000000" />
+                    <Text style={styles.editButtonText}>Edit</Text>
+                  </View>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.deleteButton}
+                  onPress={handleDeleteEvent}
+                  disabled={isDeleting}
+                >
+                  <View style={styles.deleteButtonContent}>
+                    {isDeleting ? (
+                      <ActivityIndicator size="small" color="#FF3B30" />
+                    ) : (
+                      <Text style={styles.deleteButtonText}>Cancel</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </View>
             ) : (
               <TouchableOpacity 
                 style={styles.rsvpButton}
@@ -321,7 +379,7 @@ const styles = StyleSheet.create({
   },
   modalImage: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 4/3,
     resizeMode: 'cover',
     maxHeight: 400,
   },
@@ -446,6 +504,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  creatorActions: {
+    flexDirection: 'row',
+    flex: 1,
+    gap: 12,
+  },
   editButton: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -463,6 +526,26 @@ const styles = StyleSheet.create({
   },
   editButtonText: {
     color: '#000000',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+  },
+  deleteButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  deleteButtonText: {
+    color: '#FF3B30',
     fontSize: 15,
     fontWeight: '600',
   },
