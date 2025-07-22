@@ -8,24 +8,43 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Dimensions,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Animated,
+    Dimensions,
+    RefreshControl,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Define the Event type to avoid conflict with DOM Event
+interface AppEvent {
+  id: string;
+  title: string;
+  time: string;
+  date: string;
+  location: string;
+  category: string;
+  attendingFriends: string[];
+  attendingCount: number;
+  coverImage: string;
+  description: string;
+  creator_id?: string;
+}
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const { events, attendanceMap, loading, refreshing, refreshEvents, fetchEvents } = useEvents();
-  const [selectedFilter, setSelectedFilter] = useState('now');
+  const [selectedFilter, setSelectedFilter] = useState('now'); // Changed default to 'now'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDateRange, setSelectedDateRange] = useState('all');
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>(undefined);
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>(undefined);
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -58,13 +77,116 @@ export default function HomeScreen() {
     }
   }, [user?.id]);
 
-  // Filter events based on selectedFilter
+  // Enhanced filtering logic
   const filteredEvents = React.useMemo(() => {
-    if (['music', 'party', 'art', 'food'].includes(selectedFilter)) {
-      return events.filter(event => event.category === selectedFilter);
+    let filtered = events || [];
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(event => 
+        event.title.toLowerCase().includes(query) ||
+        event.description.toLowerCase().includes(query) ||
+        event.location.toLowerCase().includes(query) ||
+        event.category.toLowerCase().includes(query)
+      );
     }
-    return events;
-  }, [events, selectedFilter]);
+
+    // Apply category filter
+    if (selectedFilter !== 'now' && !['today', 'week', 'month'].includes(selectedFilter)) {
+      filtered = filtered.filter(event => event.category === selectedFilter);
+    }
+
+    // Apply date range filter
+    if (selectedDateRange !== 'all') {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const nextWeek = new Date(today);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      
+      const nextMonth = new Date(today);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.date);
+        
+        switch (selectedDateRange) {
+          case 'today':
+            return eventDate >= today && eventDate < tomorrow;
+          case 'tomorrow':
+            const dayAfterTomorrow = new Date(tomorrow);
+            dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+            return eventDate >= tomorrow && eventDate < dayAfterTomorrow;
+          case 'week':
+            const weekEnd = new Date(today);
+            weekEnd.setDate(weekEnd.getDate() + 7);
+            return eventDate >= today && eventDate < weekEnd;
+          case 'next-week':
+            const nextWeekEnd = new Date(nextWeek);
+            nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+            return eventDate >= nextWeek && eventDate < nextWeekEnd;
+          case 'month':
+            const monthEnd = new Date(today);
+            monthEnd.setMonth(monthEnd.getMonth() + 1);
+            return eventDate >= today && eventDate < monthEnd;
+          case 'next-month':
+            const nextMonthEnd = new Date(nextMonth);
+            nextMonthEnd.setMonth(nextMonthEnd.getMonth() + 1);
+            return eventDate >= nextMonth && eventDate < nextMonthEnd;
+          case 'custom':
+            if (customStartDate && customEndDate) {
+              const startDate = new Date(customStartDate);
+              const endDate = new Date(customEndDate);
+              endDate.setHours(23, 59, 59, 999); // Include the entire end date
+              return eventDate >= startDate && eventDate <= endDate;
+            }
+            return true;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Apply time-based filters (today, this week, this month)
+    if (['today', 'week', 'month'].includes(selectedFilter)) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.date);
+        
+        switch (selectedFilter) {
+          case 'today':
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return eventDate >= today && eventDate < tomorrow;
+          case 'week':
+            const weekEnd = new Date(today);
+            weekEnd.setDate(weekEnd.getDate() + 7);
+            return eventDate >= today && eventDate < weekEnd;
+          case 'month':
+            const monthEnd = new Date(today);
+            monthEnd.setMonth(monthEnd.getMonth() + 1);
+            return eventDate >= today && eventDate < monthEnd;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Sort events by date (closest first)
+    filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return filtered;
+  }, [events, selectedFilter, searchQuery, selectedDateRange, customStartDate, customEndDate]);
+
+  const handleCustomDateChange = (startDate: Date, endDate: Date) => {
+    setCustomStartDate(startDate);
+    setCustomEndDate(endDate);
+  };
 
   const handleCreateEvent = () => {
     router.push('/create-event');
@@ -88,6 +210,13 @@ export default function HomeScreen() {
           <FilterBar
             selectedFilter={selectedFilter}
             onFilterChange={setSelectedFilter}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            selectedDateRange={selectedDateRange}
+            onDateRangeChange={setSelectedDateRange}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDateChange={handleCustomDateChange}
           />
 
           <Animated.ScrollView
@@ -116,12 +245,19 @@ export default function HomeScreen() {
             ) : filteredEvents.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Ionicons name="calendar-outline" size={60} color="#666" />
-                <Text style={styles.emptyText}>No events found</Text>
-                <Text style={styles.emptySubtext}>Check back later for upcoming events</Text>
+                <Text style={styles.emptyText}>
+                  {searchQuery.trim() ? 'No events found' : 'No events found'}
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {searchQuery.trim() 
+                    ? `No events match "${searchQuery}"` 
+                    : 'Check back later for upcoming events'
+                  }
+                </Text>
               </View>
             ) : (
               <View style={styles.eventsContainer}>
-                {filteredEvents.map((event: Event, index: number) => (
+                {filteredEvents.map((event: AppEvent, index: number) => (
                   <EventCard
                     key={event.id}
                     event={event}
