@@ -19,7 +19,15 @@ const tabs = [
   { name: 'Profile' as TabName, icon: 'person', iconOutline: 'person-outline', component: ProfileScreen },
 ];
 
-function CustomFooter({ activeTab, onTabPress, hasIncomingFriendRequests }) {
+function CustomFooter({ 
+  activeTab, 
+  onTabPress, 
+  hasIncomingFriendRequests 
+}: { 
+  activeTab: TabName; 
+  onTabPress: (tab: TabName) => void; 
+  hasIncomingFriendRequests: boolean; 
+}) {
   return (
     <View style={styles.footerContainer}>
       <View style={styles.footer}>
@@ -107,9 +115,8 @@ export default function Layout() {
     }
   }, [user]);
 
-  if (isLoading || !user) {
-    return null;
-  }
+  // Authentication is now handled by the root index.tsx
+  // This layout only renders when user is authenticated
 
   return (
     <SafeAreaProvider style={styles.container}>
