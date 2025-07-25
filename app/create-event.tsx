@@ -1,3 +1,4 @@
+import InviteUsersModal from '@/components/InviteUsersModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService, sendNewEventPushNotification } from '@/services/eventService';
 import { imageUploadService } from '@/services/imageUploadService';
@@ -42,8 +43,13 @@ export default function CreateEventScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'friends_only' | 'private'>('public');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  
+  // Add state for invite modal
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<string | null>(null);
 
   const pickImage = async () => {
     // Request permissions
@@ -131,7 +137,7 @@ export default function CreateEventScreen() {
   };
 
   const handleCreateEvent = async () => {
-    if (!title || !time || !location || !category || !description) {
+    if (!title || !time || !location || !category || !description || !visibility) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -160,17 +166,24 @@ export default function CreateEventScreen() {
         category,
         coverImage: imageUrl,
         description,
+        visibility,
         creator_id: user?.id || '', // Add creator_id
       };
       
       console.log('Creating event with data:', eventData);
       
       const event = await eventService.createEvent(eventData);
+      console.log('Event creation result:', event);
+      console.log('Event visibility:', visibility);
 
       if (event) {
         toast.success('Event created successfully!');
-        // Send push notification to all users
-        await sendNewEventPushNotification(event.title, event.id);
+        
+        // Send push notification to all users (except for private events)
+        if (visibility !== 'private') {
+          await sendNewEventPushNotification(event.title, event.id);
+        }
+        
         // Automatically RSVP the creator to the event
         if (user) {
           await eventService.rsvpToEvent(
@@ -179,13 +192,24 @@ export default function CreateEventScreen() {
             user.avatarUrl || `https://api.a0.dev/assets/image?text=${user.email?.slice(0, 1)}&aspect=1:1&seed=${user.id}`
           );
         }
-        router.back();
+        
+        // If it's a private event, show the invite modal
+        console.log('Checking if should show invite modal - visibility:', visibility, 'event.id:', event.id);
+        if (visibility === 'private') {
+          console.log('Setting up invite modal for private event');
+          setCreatedEventId(event.id);
+          setShowInviteModal(true);
+          console.log('Invite modal state set - showInviteModal should be true');
+        } else {
+          console.log('Not a private event, going back');
+          router.back();
+        }
       } else {
+        console.log('Event creation failed - no event returned');
         toast.error('Failed to create event');
       }
     } catch (error) {
       console.error('Error creating event:', error);
-      // Show more specific error message
       if (error instanceof Error) {
         toast.error(`Error: ${error.message}`);
       } else {
@@ -194,6 +218,13 @@ export default function CreateEventScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleInviteModalClose = () => {
+    console.log('handleInviteModalClose called - closing invite modal');
+    setShowInviteModal(false);
+    setCreatedEventId(null);
+    router.back();
   };
 
   const onDateChange = (event: any, selectedDate: Date | undefined) => {
@@ -218,214 +249,296 @@ export default function CreateEventScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen 
-        options={{
-          title: '',
-          headerStyle: { backgroundColor: '#0A0A0A' },
-          headerTintColor: 'white',
-        }}
-      />
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-      >
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Event Title*</Text>
-              <TextInput
-                style={styles.input}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Enter event title"
-                placeholderTextColor="#666"
-              />
-            </View>
+    <>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen 
+          options={{
+            title: '',
+            headerStyle: { backgroundColor: '#0A0A0A' },
+            headerTintColor: 'white',
+          }}
+        />
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+        >
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            <View style={styles.formContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Event Title*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Enter event title"
+                  placeholderTextColor="#666"
+                />
+              </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date*</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.dateText}>{formatDate(date)}</Text>
-                <Ionicons name="calendar-outline" size={20} color="#888" />
-              </TouchableOpacity>
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Date*</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={styles.dateText}>{formatDate(date)}</Text>
+                  <Ionicons name="calendar-outline" size={20} color="#888" />
+                </TouchableOpacity>
+              </View>
 
-            {/* iOS Modal Date Picker */}
-            {Platform.OS === 'ios' && (
-              <Modal
-                transparent={true}
-                visible={showDatePicker}
-                animationType="slide"
-                onRequestClose={() => setShowDatePicker(false)}
-              >
-                <View style={styles.modalOverlay}>
-                  <View style={styles.datePickerModal}>
-                    <View style={styles.datePickerHeader}>
-                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                        <Text style={styles.datePickerCancel}>Cancel</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.datePickerTitle}>Select Date</Text>
-                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                        <Text style={styles.datePickerDone}>Done</Text>
-                      </TouchableOpacity>
+              {/* iOS Modal Date Picker */}
+              {Platform.OS === 'ios' && (
+                <Modal
+                  transparent={true}
+                  visible={showDatePicker}
+                  animationType="slide"
+                  onRequestClose={() => setShowDatePicker(false)}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.datePickerModal}>
+                      <View style={styles.datePickerHeader}>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.datePickerCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.datePickerTitle}>Select Date</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.datePickerDone}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        testID="dateTimePicker"
+                        value={date}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        minimumDate={new Date()}
+                        style={styles.iosDatePicker}
+                      />
                     </View>
-                    <DateTimePicker
-                      testID="dateTimePicker"
-                      value={date}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                      minimumDate={new Date()}
-                      style={styles.iosDatePicker}
-                    />
                   </View>
+                </Modal>
+              )}
+
+              {/* Android Date Picker */}
+              {Platform.OS === 'android' && showDatePicker && (
+                <DateTimePicker
+                  testID="dateTimePicker"
+                  value={date}
+                  mode="date"
+                  is24Hour={true}
+                  display="default"
+                  onChange={onDateChange}
+                  minimumDate={new Date()}
+                />
+              )}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Time*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="e.g. 8:00 PM"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Location*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Enter location"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Category*</Text>
+                <View style={styles.categoryContainer}>
+                  {CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryButton,
+                        category === cat.id && styles.categoryButtonActive
+                      ]}
+                      onPress={() => setCategory(cat.id)}
+                    >
+                      <Ionicons
+                        name={cat.icon as any}
+                        size={20}
+                        color={category === cat.id ? 'white' : '#888'}
+                      />
+                      <Text
+                        style={[
+                          styles.categoryText,
+                          category === cat.id && styles.categoryTextActive
+                        ]}
+                      >
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </Modal>
-            )}
+              </View>
 
-            {/* Android Date Picker */}
-            {Platform.OS === 'android' && showDatePicker && (
-              <DateTimePicker
-                testID="dateTimePicker"
-                value={date}
-                mode="date"
-                is24Hour={true}
-                display="default"
-                onChange={onDateChange}
-                minimumDate={new Date()}
-              />
-            )}
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Time*</Text>
-              <TextInput
-                style={styles.input}
-                value={time}
-                onChangeText={setTime}
-                placeholder="e.g. 8:00 PM"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Location*</Text>
-              <TextInput
-                style={styles.input}
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Enter location"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Category*</Text>
-              <View style={styles.categoryContainer}>
-                {CATEGORIES.map((cat) => (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Visibility*</Text>
+                <View style={styles.categoryContainer}>
                   <TouchableOpacity
-                    key={cat.id}
                     style={[
                       styles.categoryButton,
-                      category === cat.id && styles.categoryButtonActive
+                      visibility === 'public' && styles.categoryButtonActive
                     ]}
-                    onPress={() => setCategory(cat.id)}
+                    onPress={() => setVisibility('public')}
                   >
                     <Ionicons
-                      name={cat.icon as any}
+                      name="globe-outline"
                       size={20}
-                      color={category === cat.id ? 'white' : '#888'}
+                      color={visibility === 'public' ? 'white' : '#888'}
                     />
                     <Text
                       style={[
                         styles.categoryText,
-                        category === cat.id && styles.categoryTextActive
+                        visibility === 'public' && styles.categoryTextActive
                       ]}
                     >
-                      {cat.label}
+                      Public
                     </Text>
                   </TouchableOpacity>
-                ))}
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryButton,
+                      visibility === 'friends_only' && styles.categoryButtonActive
+                    ]}
+                    onPress={() => setVisibility('friends_only')}
+                  >
+                    <Ionicons
+                      name="people-outline"
+                      size={20}
+                      color={visibility === 'friends_only' ? 'white' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        visibility === 'friends_only' && styles.categoryTextActive
+                      ]}
+                    >
+                      Friends Only
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryButton,
+                      visibility === 'private' && styles.categoryButtonActive
+                    ]}
+                    onPress={() => {
+                      console.log('Setting visibility to private');
+                      setVisibility('private');
+                    }}
+                  >
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={20}
+                      color={visibility === 'private' ? 'white' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        visibility === 'private' && styles.categoryTextActive
+                      ]}
+                    >
+                      Private
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Cover Image</Text>
-              <TouchableOpacity
-                style={styles.imagePickerContainer}
-                onPress={pickImage}
-                disabled={isUploadingImage}
-              >
-                {selectedImage ? (
-                  <View style={styles.imagePreviewContainer}>
-                    <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-                    <View style={styles.imageOverlay}>
-                      {isUploadingImage ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Ionicons name="camera" size={24} color="white" />
-                      )}
-                      <Text style={styles.imageOverlayText}>
-                        {isUploadingImage ? 'Uploading...' : 'Tap to change'}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Cover Image</Text>
+                <TouchableOpacity
+                  style={styles.imagePickerContainer}
+                  onPress={pickImage}
+                  disabled={isUploadingImage}
+                >
+                  {selectedImage ? (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                      <View style={styles.imageOverlay}>
+                        {isUploadingImage ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <Ionicons name="camera" size={24} color="white" />
+                        )}
+                        <Text style={styles.imageOverlayText}>
+                          {isUploadingImage ? 'Uploading...' : 'Tap to change'}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Ionicons name="camera-outline" size={48} color="#666" />
+                      <Text style={styles.imagePlaceholderText}>
+                        {isUploadingImage ? 'Uploading...' : 'Tap to add cover image'}
+                      </Text>
+                      <Text style={styles.imagePlaceholderSubtext}>
+                        Or leave blank for auto-generated image
                       </Text>
                     </View>
-                  </View>
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <Ionicons name="camera-outline" size={48} color="#666" />
-                    <Text style={styles.imagePlaceholderText}>
-                      {isUploadingImage ? 'Uploading...' : 'Tap to add cover image'}
-                    </Text>
-                    <Text style={styles.imagePlaceholderSubtext}>
-                      Or leave blank for auto-generated image
-                    </Text>
-                  </View>
-                )}
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Description*</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Enter event description"
+                  placeholderTextColor="#666"
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.button}
+                onPress={handleCreateEvent}
+                disabled={isSubmitting}
+              >
+                <LinearGradient
+                  colors={['#FF006E', '#8338EC']}
+                  style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <Ionicons name="add-circle" size={20} color="white" style={styles.buttonIcon} />
+                      <Text style={styles.buttonText}>Create Event</Text>
+                    </>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
             </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description*</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Enter event description"
-                placeholderTextColor="#666"
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleCreateEvent}
-              disabled={isSubmitting}
-            >
-              <LinearGradient
-                colors={['#FF006E', '#8338EC']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <>
-                    <Ionicons name="add-circle" size={20} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.buttonText}>Create Event</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      {/* Invite Users Modal for private events */}
+      <InviteUsersModal
+        visible={showInviteModal}
+        onClose={handleInviteModalClose}
+        eventId={createdEventId || ''}
+        eventTitle={title}
+      />
+    </>
   );
 }
 

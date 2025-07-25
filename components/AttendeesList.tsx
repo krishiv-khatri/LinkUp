@@ -33,7 +33,7 @@ export default function AttendeesList({ attendees, totalCount, maxVisible = 4 }:
 
   const filteredAttendees = searchQuery
     ? attendees.filter(attendee => 
-        attendee.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        attendee.name?.toLowerCase().includes((searchQuery || '').toLowerCase())
       )
     : attendees;
 

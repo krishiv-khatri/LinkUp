@@ -21,6 +21,8 @@ interface FilterBarProps {
   customStartDate?: Date;
   customEndDate?: Date;
   onCustomDateChange?: (startDate: Date, endDate: Date) => void;
+  selectedVisibility?: 'all' | 'public' | 'friends_only' | 'private';
+  onVisibilityChange?: (visibility: 'all' | 'public' | 'friends_only' | 'private') => void;
 }
 
 const filters = [
@@ -46,6 +48,13 @@ const dateRanges = [
   { id: 'month', label: 'This Month', icon: 'calendar-number' },
   { id: 'next-month', label: 'Next Month', icon: 'calendar-number-outline' },
   { id: 'custom', label: 'Custom Range', icon: 'calendar' },
+];
+
+const visibilityOptions = [
+  { id: 'all', label: 'All Events', icon: 'globe-outline' },
+  { id: 'public', label: 'Public', icon: 'globe-outline' },
+  { id: 'friends_only', label: 'Friends Only', icon: 'people-outline' },
+  { id: 'private', label: 'Private', icon: 'lock-closed-outline' },
 ];
 
 // Simple date picker component
@@ -222,9 +231,12 @@ export default function FilterBar({
   onDateRangeChange,
   customStartDate,
   customEndDate,
-  onCustomDateChange
+  onCustomDateChange,
+  selectedVisibility = 'all',
+  onVisibilityChange
 }: FilterBarProps) {
   const [showDateModal, setShowDateModal] = useState(false);
+  const [showVisibilityModal, setShowVisibilityModal] = useState(false);
   const [showCustomDateInput, setShowCustomDateInput] = useState(false);
   const [tempStartDate, setTempStartDate] = useState(customStartDate || new Date());
   const [tempEndDate, setTempEndDate] = useState(customEndDate || new Date());
@@ -310,6 +322,39 @@ export default function FilterBar({
             color={isDateFilterActive ? "#FF006E" : "#666"} 
           />
         </TouchableOpacity>
+
+        {/* Visibility Filter - Only show if onVisibilityChange is provided */}
+        {onVisibilityChange && (
+          <TouchableOpacity
+            style={[
+              styles.visibilityButton,
+              selectedVisibility !== 'all' && styles.visibilityButtonActive
+            ]}
+            onPress={() => setShowVisibilityModal(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons 
+              name={
+                selectedVisibility === 'all' ? 'globe-outline' :
+                selectedVisibility === 'public' ? 'globe-outline' :
+                selectedVisibility === 'friends_only' ? 'people-outline' : 'lock-closed-outline'
+              }
+              size={16} 
+              color={selectedVisibility !== 'all' ? "#FF006E" : "#666"} 
+            />
+            <Text style={[
+              styles.visibilityText, 
+              selectedVisibility !== 'all' && styles.visibilityTextActive
+            ]} numberOfLines={1}>
+              {visibilityOptions.find(v => v.id === selectedVisibility)?.label || 'Visibility'}
+            </Text>
+            <Ionicons 
+              name="chevron-down" 
+              size={12} 
+              color={selectedVisibility !== 'all' ? "#FF006E" : "#666"} 
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Category Filters */}
@@ -453,6 +498,62 @@ export default function FilterBar({
           </View>
         </View>
       </Modal>
+
+      {/* Visibility Modal */}
+      {onVisibilityChange && (
+        <Modal
+          visible={showVisibilityModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowVisibilityModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Filter by Visibility</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowVisibilityModal(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.optionsList}>
+                {visibilityOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[
+                      styles.optionItem,
+                      selectedVisibility === option.id && styles.optionItemActive
+                    ]}
+                    onPress={() => {
+                      onVisibilityChange(option.id as any);
+                      setShowVisibilityModal(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons 
+                      name={option.icon as any} 
+                      size={20} 
+                      color={selectedVisibility === option.id ? "#FF006E" : "#666"} 
+                    />
+                    <Text style={[
+                      styles.optionText,
+                      selectedVisibility === option.id && styles.optionTextActive
+                    ]}>
+                      {option.label}
+                    </Text>
+                    {selectedVisibility === option.id && (
+                      <Ionicons name="checkmark" size={16} color="#FF006E" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -802,5 +903,56 @@ const styles = StyleSheet.create({
   },
   calendarDayTextDisabled: {
     color: '#444',
+  },
+  // Visibility filter styles
+  visibilityButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#333',
+    maxWidth: 120,
+  },
+  visibilityButtonActive: {
+    borderColor: '#FF006E',
+    backgroundColor: 'rgba(255, 0, 110, 0.1)',
+  },
+  visibilityText: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  visibilityTextActive: {
+    color: '#FF006E',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  optionsList: {
+    maxHeight: 300,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  optionItemActive: {
+    backgroundColor: 'rgba(255, 0, 110, 0.1)',
+  },
+  optionText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  optionTextActive: {
+    color: '#FF006E',
   },
 });

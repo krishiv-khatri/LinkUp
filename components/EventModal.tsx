@@ -7,14 +7,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -30,6 +30,7 @@ interface Event {
   coverImage: string;
   description: string;
   creator_id?: string;
+  visibility?: 'public' | 'friends_only' | 'private';
 }
 
 interface Attendee {
@@ -69,18 +70,42 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
   const [attendees, setAttendees] = useState<any[]>([]);
   const [loadingAttendees, setLoadingAttendees] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [canViewEvent, setCanViewEvent] = useState(true);
+  const [checkingAccess, setCheckingAccess] = useState(false);
 
 
   useEffect(() => {
-    if (visible && event && user) {
-      checkAttendance();
-      if (showAttendees) {
-        loadAttendees();
+    if (visible && event) {
+      checkEventAccess();
+      if (user) {
+        checkAttendance();
+        if (showAttendees) {
+          loadAttendees();
+        }
       }
-      
-
     }
   }, [visible, event, user, showAttendees]);
+
+  const checkEventAccess = async () => {
+    if (!event) return;
+    
+    setCheckingAccess(true);
+    try {
+      const hasAccess = await eventService.canUserViewEvent(event.id, user?.id);
+      setCanViewEvent(hasAccess);
+      if (!hasAccess) {
+        setTimeout(() => {
+          toast.error('You do not have permission to view this event');
+          onClose();
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error checking event access:', error);
+      setCanViewEvent(false);
+    } finally {
+      setCheckingAccess(false);
+    }
+  };
 
   const checkAttendance = async () => {
     if (!event || !user) return;
@@ -190,6 +215,46 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
 
   if (!event) return null;
 
+  // Show loading state while checking access
+  if (checkingAccess) {
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={onClose}
+      >
+        <View style={[styles.modalContainer, styles.centerContent]}>
+          <ActivityIndicator size="large" color="#FF006E" />
+          <Text style={styles.loadingText}>Verifying access...</Text>
+        </View>
+      </Modal>
+    );
+  }
+
+  // Show access denied message
+  if (!canViewEvent) {
+    return (
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={onClose}
+      >
+        <View style={[styles.modalContainer, styles.centerContent]}>
+          <Ionicons name="lock-closed-outline" size={64} color="#FF006E" />
+          <Text style={styles.accessDeniedTitle}>Access Restricted</Text>
+          <Text style={styles.accessDeniedText}>
+            This event is {event.visibility === 'friends_only' ? 'visible to friends only' : 'private'}.
+          </Text>
+          <TouchableOpacity style={styles.accessDeniedButton} onPress={onClose}>
+            <Text style={styles.accessDeniedButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       visible={visible}
@@ -228,13 +293,27 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
         >
           <View style={styles.modalTitleSection}>
             <Text style={styles.modalTitle}>{event.title}</Text>
-            <View style={styles.categoryIndicator}>
-              <Ionicons 
-                name="star" 
-                size={14} 
-                color="#888" 
-              />
-              <Text style={styles.categoryText}>{event.category}</Text>
+            <View style={styles.badgesRow}>
+              <View style={styles.categoryIndicator}>
+                <Ionicons 
+                  name="star" 
+                  size={14} 
+                  color="#888" 
+                />
+                <Text style={styles.categoryText}>{event.category}</Text>
+              </View>
+              {event.visibility && event.visibility !== 'public' && (
+                <View style={styles.visibilityIndicator}>
+                  <Ionicons 
+                    name={event.visibility === 'friends_only' ? 'people-outline' : 'lock-closed-outline'} 
+                    size={14} 
+                    color="#FF006E" 
+                  />
+                  <Text style={styles.visibilityText}>
+                    {event.visibility === 'friends_only' ? 'Friends Only' : 'Private'}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
           
@@ -409,10 +488,30 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     letterSpacing: -0.5,
   },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   categoryIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  visibilityIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 0, 110, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  visibilityText: {
+    color: '#FF006E',
+    fontSize: 12,
+    fontWeight: '500',
   },
   categoryText: {
     fontSize: 12,
@@ -572,14 +671,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#2A2A2A',
     gap: 8,
   },
-  loadingText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '500',
-  },
   errorText: {
     color: '#888',
     fontSize: 12,
     fontWeight: '500',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    color: '#ffffff',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  accessDeniedTitle: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  accessDeniedText: {
+    color: '#888',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  accessDeniedButton: {
+    backgroundColor: '#FF006E',
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  accessDeniedButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 

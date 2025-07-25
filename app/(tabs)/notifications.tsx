@@ -15,11 +15,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
-import EventModal from '../components/EventModal';
-import FriendProfileModal from '../components/FriendProfileModal';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-import { eventService } from '../services/eventService';
+import EventModal from '../../components/EventModal';
+import FriendProfileModal from '../../components/FriendProfileModal';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { eventService } from '../../services/eventService';
 
 interface NotificationItem {
   id: string;
@@ -126,8 +126,24 @@ export default function NotificationsScreen() {
     }
   };
 
-  const handleViewEvent = (event: any) => {
-    setSelectedEvent(event);
+  const handleViewEvent = (invitationEvent: any) => {
+    // Transform the invitation event data to match EventModal expectations
+    const formattedEvent = {
+      id: invitationEvent?.id,
+      title: invitationEvent?.title,
+      time: invitationEvent?.time,
+      date: invitationEvent?.event_date || invitationEvent?.date, // Handle both field names
+      location: invitationEvent?.location,
+      category: invitationEvent?.category,
+      attendingFriends: [],
+      attendingCount: 0,
+      coverImage: invitationEvent?.cover_image || invitationEvent?.coverImage, // Handle both field names
+      description: invitationEvent?.description,
+      creator_id: invitationEvent?.creator_id,
+      visibility: invitationEvent?.visibility,
+    };
+    
+    setSelectedEvent(formattedEvent);
     setEventModalVisible(true);
   };
 
@@ -143,72 +159,66 @@ export default function NotificationsScreen() {
       
       // 2. Get all events, filter for hosted
       const allEvents = await eventService.getEvents();
-      // For each hosted event, also fetch attendees and attach to event
-      const hosted = await Promise.all(
-        allEvents.filter((e: any) => e.creator_id === user.id).map(async (event: any) => {
-          const attendees = await eventService.getAttendees(event.id);
-          return { ...event, attendees };
-        })
-      );
+      const hosted = allEvents.filter(e => e.creator_id === user.id);
       setHostedEvents(hosted);
-      let notifList: NotificationItem[] = [];
-      const now = new Date();
 
-      // --- Event Reminders for RSVP'ed Events ---
+      // 3. Generate notifications for attended events
+      let notifList: NotificationItem[] = [];
+
+      // Event reminders for attending events
       for (const event of attendingEvents) {
-        // Skip reminders if user is the host (robust check for UUIDs)
-        if (event.creator_id && user.id && event.creator_id.toString().trim() === user.id.toString().trim()) {
-          // Debug log to verify UUIDs
-          continue;
-        }
-        // Combine date and time into a Date object
-        const eventDateTime = new Date(event.date + 'T' + event.time);
-        const notificationTimes = getNotificationTimes(eventDateTime);
-        const timeLabels = ['1 day', '2 hours', '1 hour'];
-        notificationTimes.forEach((nt, idx) => {
-          // Show notification if now is after notification time and before event
-          if (now >= nt && now < eventDateTime) {
+        const eventDateTime = new Date(`${event.date} ${event.time}`);
+        const now = new Date();
+        const reminderTimes = getNotificationTimes(eventDateTime);
+
+        reminderTimes.forEach((reminderTime, index) => {
+          if (now >= reminderTime && now <= eventDateTime) {
+            const timeLabels = ['tomorrow', 'in 2 hours', 'in 1 hour'];
             notifList.push({
-              id: `${event.id}-reminder-${idx}`,
-              title: `Event Reminder: ${event.title}`,
-              body: `Your event "${event.title}" is in ${timeLabels[idx]}.`,
+              id: `${event.id}-reminder-${index}`,
+              title: `Event Reminder`,
+              body: `"${event.title}" is starting ${timeLabels[index]}!`,
               avatar_url: event.coverImage,
-              created_at: nt.toISOString(),
+              created_at: reminderTime.toISOString(),
               read: false,
             });
           }
         });
       }
 
-      // --- RSVP Notifications for Hosted Events ---
+      // RSVP notifications for hosted events
       for (const event of hosted) {
-        const attendees = event.attendees;
-        if (attendees.length === 0) continue;
-        // Show individual notifications for first 5 RSVPs
-        if (attendees.length <= 5) {
-          attendees.forEach((att: any, idx: number) => {
+        const attendees = await eventService.getAttendees(event.id);
+        
+        if (attendees.length > 0) {
+          // Filter out the creator from attendees for notifications
+          const nonCreatorAttendees = attendees.filter((a: any) => a.user_id !== user.id);
+          
+          if (nonCreatorAttendees.length === 1) {
+            // Single attendee
+            const attendee = nonCreatorAttendees[0];
             notifList.push({
-              id: `${event.id}-rsvp-${att.user_id}`,
-              title: `RSVP: ${event.title}`,
-              body: `${att.name || 'Someone'} has RSVP'ed to your event!`,
-              avatar_url: event.coverImage,
-              created_at: att.created_at || new Date().toISOString(),
+              id: `${event.id}-rsvp-single`,
+              title: `New RSVP: ${event.title}`,
+              body: `${attendee.name} has RSVP'ed to your event!`,
+              avatar_url: attendee.avatar_url,
+              created_at: attendee.created_at || new Date().toISOString(),
               read: false,
             });
-          });
-        } else {
-          // Instagram-style: show latest 2 RSVPers and count of others
-          const latest = attendees.slice(-2);
-          const othersCount = attendees.length - 2;
-          const names = latest.map((a: any) => a.name).join(', ');
-          notifList.push({
-            id: `${event.id}-rsvp-ig` ,
-            title: `RSVP: ${event.title}`,
-            body: `${names} and ${othersCount} other${othersCount > 1 ? 's' : ''} have RSVP'ed to your event!`,
-            avatar_url: event.coverImage,
-            created_at: latest[1]?.created_at || latest[0]?.created_at || new Date().toISOString(),
-            read: false,
-          });
+          } else if (nonCreatorAttendees.length > 1) {
+            // Multiple attendees - show latest 2 and count of others
+            const latest = nonCreatorAttendees.slice(-2);
+            const othersCount = nonCreatorAttendees.length - 2;
+            const names = latest.map((a: any) => a.name).join(', ');
+            notifList.push({
+              id: `${event.id}-rsvp-ig` ,
+              title: `RSVP: ${event.title}`,
+              body: `${names} and ${othersCount} other${othersCount > 1 ? 's' : ''} have RSVP'ed to your event!`,
+              avatar_url: event.coverImage,
+              created_at: latest[1]?.created_at || latest[0]?.created_at || new Date().toISOString(),
+              read: false,
+            });
+          }
         }
       }
 
@@ -225,32 +235,19 @@ export default function NotificationsScreen() {
             return false;
           }
         }
-        // Filter RSVP notifications for own RSVP to own event
-        if (n.id.includes('-rsvp-') && n.title.startsWith('RSVP:')) {
-          const eventId = n.id.split('-rsvp-')[0];
-          const event = hosted.find(e => e.id === eventId);
-          // If this RSVP notification is for the current user and the event is hosted by the user, skip
-          if (event && event.creator_id && user.id && event.creator_id.toString().trim() === user.id.toString().trim()) {
-            // For individual RSVP notifications, check if the user is the RSVP'er
-            if (n.id.endsWith(user.id)) {
-              return false;
-            }
-            // For Instagram-style, if the only RSVPers are the user, skip
-            if (n.body.includes(user.id)) {
-              return false;
-            }
-          }
-        }
         return true;
       });
+
       setNotifications(filteredNotifList);
       setLoading(false);
+
+      // Animate in
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
     })();
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
   }, [user]);
 
   // Fix the sorting to have proper typing - find and fix the sort function that's causing the error
@@ -363,9 +360,6 @@ export default function NotificationsScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#ffffff" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
       </View>
 
@@ -406,54 +400,21 @@ export default function NotificationsScreen() {
                       {n.avatar_url ? (
                         <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
                       ) : (
-                        <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                          <Ionicons name="notifications" size={28} color="#888" />
+                        <View style={styles.avatarPlaceholder}>
+                          <Text style={styles.avatarText}>
+                            {n.title.slice(0, 1).toUpperCase()}
+                          </Text>
                         </View>
                       )}
-                      <View style={styles.notificationDetails}>
+                      <View style={styles.textInfo}>
                         <Text style={styles.notificationTitle}>{n.title}</Text>
-                        {/* RSVP notification: clickable name(s) */}
-                        {n.title.startsWith('RSVP:') && n.body.match(/^[^ ]+/) ? (
-                          <Text style={styles.notificationBody}>
-                            {(() => {
-                              // Try to extract names and the rest
-                              const match = n.body.match(/^([\w\s]+)(?:, ([\w\s]+))? (and \d+ others )?have RSVP'ed to your event!$/);
-                              if (match) {
-                                const [ , name1, name2, others ] = match;
-                                // For individual RSVP, user_id is in n.id
-                                const eventId = n.id.split('-rsvp-')[0];
-                                // Find the attendee list for this event
-                                const event = hostedEvents.find(e => e.id === eventId);
-                                let attendees = event && event.attendees ? event.attendees : [];
-                                // Helper to find user_id by name
-                                const findUserIdByName = (name: string, attendees: any[]) => {
-                                  const found = attendees.find((a: any) => a.name === name.trim());
-                                  return found ? found.user_id : '';
-                                };
-                                return <>
-                                  {name1 && <Text style={{ fontWeight: 'bold' }} onPress={() => handleShowProfile(findUserIdByName(name1, attendees))}>{name1}</Text>}
-                                  {name2 && <Text> <Text style={{ fontWeight: 'bold' }} onPress={() => handleShowProfile(findUserIdByName(name2, attendees))}>{name2}</Text></Text>}
-                                  {others && <Text> {others}</Text>}
-                                  <Text>have RSVP'ed to your event!</Text>
-                                </>;
-                              } else {
-                                // Fallback: just bold and clickable for the first word
-                                const parts = n.body.split(' ');
-                                const userId = n.id.split('-rsvp-')[1] || '';
-                                return <><Text style={{ fontWeight: 'bold' }} onPress={() => handleShowProfile(userId)}>{parts[0]}</Text> {parts.slice(1).join(' ')}</>;
-                              }
-                            })()}
-                          </Text>
-                        ) : (
-                          <Text style={styles.notificationBody}>{n.body}</Text>
-                        )}
-                        <Text style={styles.notificationTime}>{formatTimeAgo(n.created_at)}</Text>
+                        <Text style={styles.notificationBody}>{n.body}</Text>
+                        <Text style={styles.timestamp}>{formatTimeAgo(n.created_at)}</Text>
                       </View>
                     </View>
                   </View>
                 ))
               )}
-              <View style={{ height: 100 }} />
             </ScrollView>
           )}
         </ScrollView>
@@ -523,61 +484,72 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   spinnerContainer: {
-    flex: 1,
-    justifyContent: 'center',
+    marginTop: 50,
     alignItems: 'center',
-    paddingHorizontal: 20,
-    bottom: 100,
-  },
-  loadingText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
   },
   notificationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#1A1A1A',
-    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+  },
+  unread: {
+    borderLeftColor: '#FF006E',
+    opacity: 1,
+  },
+  read: {
+    borderLeftColor: '#333',
+    opacity: 0.7,
   },
   notificationInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    alignItems: 'flex-start',
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
   },
-  notificationDetails: {
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#333',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    color: '#FF006E',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  textInfo: {
     flex: 1,
-    marginLeft: 16,
   },
   notificationTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: 'white',
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 4,
   },
   notificationBody: {
+    color: '#cccccc',
     fontSize: 14,
-    color: '#ccc',
-    marginBottom: 4,
+    lineHeight: 20,
+    marginBottom: 8,
   },
-  notificationTime: {
-    fontSize: 12,
+  timestamp: {
     color: '#888',
+    fontSize: 12,
   },
-  read: {
-    opacity: 0.6,
+  loadingText: {
+    color: '#888',
+    fontSize: 16,
   },
-  unread: {
-    opacity: 1,
-  },
+  
   // New styles for event invitations
   section: {
     marginBottom: 24,
@@ -683,12 +655,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#FF006E',
+    backgroundColor: 'white',
     alignItems: 'center',
     justifyContent: 'center',
   },
   acceptButtonText: {
-    color: 'white',
+    color: 'black',
     fontSize: 15,
     fontWeight: '600',
     letterSpacing: 0.5,

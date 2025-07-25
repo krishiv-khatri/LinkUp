@@ -12,6 +12,17 @@ export interface Event {
   coverImage: string;
   description: string;
   creator_id?: string; // Add creator_id field
+  visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
+}
+
+export interface EventInvitation {
+  id: string;
+  event_id: string;
+  inviter_id: string;
+  invitee_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Attendee {
@@ -38,7 +49,8 @@ export const eventService = {
         cover_image,
         description,
         created_at,
-        creator_id
+        creator_id,
+        visibility
       `)
       .order('event_date', { ascending: true });
     
@@ -89,7 +101,8 @@ export const eventService = {
         coverImage: event.cover_image,
         description: event.description,
         attendingFriends: attendingFriends.slice(0, 5), // Limit to 5 for display
-        creator_id: event.creator_id
+        creator_id: event.creator_id,
+        visibility: event.visibility || 'public'
       };
     });
   },
@@ -107,7 +120,8 @@ export const eventService = {
         category,
         cover_image,
         description,
-        creator_id
+        creator_id,
+        visibility
       `)
       .eq('id', id)
       .single();
@@ -141,7 +155,8 @@ export const eventService = {
       coverImage: event.cover_image,
       description: event.description,
       attendingFriends: attendingFriends.slice(0, 5), // Limit to 5 for display
-      creator_id: event.creator_id
+      creator_id: event.creator_id,
+      visibility: event.visibility || 'public'
     };
   },
   
@@ -159,7 +174,8 @@ export const eventService = {
         category: event.category,
         cover_image: event.coverImage,
         description: event.description,
-        creator_id: event.creator_id
+        creator_id: event.creator_id,
+        visibility: event.visibility || 'public'
       })
       .select()
       .single();
@@ -186,7 +202,8 @@ export const eventService = {
       attendingCount: 0,
       coverImage: data.cover_image,
       description: data.description,
-      creator_id: data.creator_id // Include creator_id in the returned event
+      creator_id: data.creator_id, // Include creator_id in the returned event
+      visibility: data.visibility || 'public'
     };
   },
   
@@ -495,6 +512,7 @@ export const eventService = {
           category: updates.category,
           cover_image: updates.coverImage,
           description: updates.description,
+          visibility: updates.visibility,
           updated_at: new Date().toISOString()
         })
         .eq('id', eventId)
@@ -524,12 +542,322 @@ export const eventService = {
         attendingCount: 0,
         coverImage: data.cover_image,
         description: data.description,
-        creator_id: data.creator_id
+        creator_id: data.creator_id,
+        visibility: data.visibility || 'public'
       };
     } catch (error) {
       console.error('Error updating event:', error);
       return null;
     }
+  },
+
+  // Get events filtered by visibility and user relationships
+  async getEventsForUser(userId: string, visibility?: 'public' | 'friends_only' | 'private'): Promise<Event[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      // If not authenticated, only return public events
+      const { data: events, error } = await supabase
+        .from('events')
+        .select(`
+          id, title, time, event_date, location, category, 
+          cover_image, description, creator_id, visibility
+        `)
+        .eq('visibility', 'public')
+        .order('event_date', { ascending: true });
+      
+      if (error) {
+        console.error('Error fetching public events', error);
+        return [];
+      }
+      
+      return this.enrichEventsWithAttendees(events || []);
+    }
+
+    let query = supabase.from('events').select(`
+      id, title, time, event_date, location, category, 
+      cover_image, description, creator_id, visibility
+    `);
+
+    if (visibility) {
+      query = query.eq('visibility', visibility);
+    }
+
+    const { data: events, error } = await query.order('event_date', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching events for user', error);
+      return [];
+    }
+
+    if (!events || events.length === 0) {
+      return [];
+    }
+
+    // Filter events based on visibility rules
+    const filteredEvents = await this.filterEventsByVisibility(events, userId);
+    return this.enrichEventsWithAttendees(filteredEvents);
+  },
+
+  // Helper method to filter events by visibility rules
+  async filterEventsByVisibility(events: any[], userId: string): Promise<any[]> {
+    const friendIds = await this.getUserFriendIds(userId);
+    const attendingEventIds = await this.getUserAttendingEventIds(userId);
+
+    return events.filter(event => {
+      switch (event.visibility) {
+        case 'public':
+          return true;
+        case 'friends_only':
+          return event.creator_id === userId || friendIds.includes(event.creator_id);
+        case 'private':
+          return event.creator_id === userId || attendingEventIds.includes(event.id);
+        default:
+          return true; // Default to public for legacy events
+      }
+    });
+  },
+
+  // Helper method to get user's friend IDs
+  async getUserFriendIds(userId: string): Promise<string[]> {
+    const { data: friends, error } = await supabase
+      .from('friends')
+      .select('user_id, friend_id')
+      .eq('status', 'accepted')
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
+
+    if (error) {
+      console.error('Error fetching friends', error);
+      return [];
+    }
+
+    return friends?.map(friend => 
+      friend.user_id === userId ? friend.friend_id : friend.user_id
+    ) || [];
+  },
+
+  // Helper method to get events user is attending
+  async getUserAttendingEventIds(userId: string): Promise<string[]> {
+    const { data: attendees, error } = await supabase
+      .from('attendees')
+      .select('event_id')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error fetching attending events', error);
+      return [];
+    }
+
+    return attendees?.map(a => a.event_id) || [];
+  },
+
+  // Helper method to enrich events with attendee data
+  async enrichEventsWithAttendees(events: any[]): Promise<Event[]> {
+    if (events.length === 0) return [];
+
+    const eventIds = events.map(event => event.id);
+    
+    const { data: allAttendees, error: attendeesError } = await supabase
+      .from('attendees')
+      .select('event_id, avatar_url')
+      .in('event_id', eventIds);
+    
+    if (attendeesError) {
+      console.error('Error fetching attendees', attendeesError);
+    }
+    
+    const attendeesByEvent = new Map<string, string[]>();
+    allAttendees?.forEach(attendee => {
+      if (!attendeesByEvent.has(attendee.event_id)) {
+        attendeesByEvent.set(attendee.event_id, []);
+      }
+      if (attendee.avatar_url) {
+        attendeesByEvent.get(attendee.event_id)!.push(attendee.avatar_url);
+      }
+    });
+    
+    return events.map(event => {
+      const attendingFriends = attendeesByEvent.get(event.id) || [];
+      return {
+        id: event.id,
+        title: event.title,
+        time: event.time,
+        date: event.event_date,
+        location: event.location,
+        category: event.category,
+        attendingCount: attendingFriends.length,
+        coverImage: event.cover_image,
+        description: event.description,
+        attendingFriends: attendingFriends.slice(0, 5),
+        creator_id: event.creator_id,
+        visibility: event.visibility || 'public'
+      };
+    });
+  },
+
+  // Check if user can view an event based on visibility rules
+  async canUserViewEvent(eventId: string, userId?: string): Promise<boolean> {
+    const event = await this.getEventById(eventId);
+    if (!event) return false;
+
+    if (!userId) {
+      return event.visibility === 'public';
+    }
+
+    switch (event.visibility) {
+      case 'public':
+        return true;
+      case 'friends_only':
+        if (event.creator_id === userId) return true;
+        const friendIds = await this.getUserFriendIds(userId);
+        return friendIds.includes(event.creator_id || '');
+      case 'private':
+        if (event.creator_id === userId) return true;
+        // Check if user is invited or attending
+        const isInvited = await this.isUserInvited(eventId, userId);
+        if (isInvited) return true;
+        const attendingEventIds = await this.getUserAttendingEventIds(userId);
+        return attendingEventIds.includes(eventId);
+      default:
+        return true;
+    }
+  },
+
+  // Invitation management functions
+  async inviteUsersToEvent(eventId: string, inviterId: string, inviteeIds: string[]): Promise<boolean> {
+    try {
+      const invitations = inviteeIds.map(inviteeId => ({
+        event_id: eventId,
+        inviter_id: inviterId,
+        invitee_id: inviteeId,
+        status: 'pending'
+      }));
+
+      const { error } = await supabase
+        .from('event_invitations')
+        .insert(invitations);
+
+      if (error) {
+        console.error('Error creating invitations:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error inviting users:', error);
+      return false;
+    }
+  },
+
+  async getEventInvitations(eventId: string): Promise<EventInvitation[]> {
+    const { data, error } = await supabase
+      .from('event_invitations')
+      .select('*')
+      .eq('event_id', eventId);
+
+    if (error) {
+      console.error('Error fetching invitations:', error);
+      return [];
+    }
+
+    return data || [];
+  },
+
+  async getUserInvitations(userId: string): Promise<any[]> {
+    const { data, error } = await supabase
+      .from('event_invitations')
+      .select(`
+        *,
+        events(
+          id, title, time, event_date, location, category, 
+          cover_image, description, creator_id, visibility
+        )
+      `)
+      .eq('invitee_id', userId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching user invitations:', error);
+      return [];
+    }
+
+    // Manually fetch inviter profiles to avoid foreign key issues
+    if (data && data.length > 0) {
+      const inviterIds = data.map(inv => inv.inviter_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, display_name, username, avatar_url')
+        .in('id', inviterIds);
+
+      // Attach inviter profiles to invitations
+      return data.map(invitation => ({
+        ...invitation,
+        event: invitation.events,
+        inviter: profiles?.find(p => p.id === invitation.inviter_id) || null
+      }));
+    }
+
+    return data || [];
+  },
+
+  async respondToInvitation(invitationId: string, response: 'accepted' | 'declined'): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('event_invitations')
+        .update({ 
+          status: response,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', invitationId);
+
+      if (error) {
+        console.error('Error responding to invitation:', error);
+        return false;
+      }
+
+      // If accepted, add user to attendees
+      if (response === 'accepted') {
+        const { data: invitation } = await supabase
+          .from('event_invitations')
+          .select('event_id, invitee_id')
+          .eq('id', invitationId)
+          .single();
+
+        if (invitation) {
+          // Get user's avatar for attendees table
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('avatar_url')
+            .eq('id', invitation.invitee_id)
+            .single();
+
+          const avatarUrl = profile?.avatar_url || 
+            `https://api.a0.dev/assets/image?text=${invitation.invitee_id.slice(0, 1)}&aspect=1:1&seed=${invitation.invitee_id}`;
+
+          await this.rsvpToEvent(invitation.event_id, invitation.invitee_id, avatarUrl);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error responding to invitation:', error);
+      return false;
+    }
+  },
+
+  // Check if user is invited to private event
+  async isUserInvited(eventId: string, userId: string): Promise<boolean> {
+    if (!userId) return false;
+
+    const { data, error } = await supabase
+      .from('event_invitations')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('invitee_id', userId)
+      .single();
+
+    return !error && !!data;
   }
 };
 

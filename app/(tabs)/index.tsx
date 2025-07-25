@@ -1,8 +1,7 @@
-import EventCard from '@/components/EventCard'; // Adjusted path
-import FilterBar from '@/components/FilterBar'; // Adjusted path
+import EventCard from '@/components/EventCard';
+import FilterBar from '@/components/FilterBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEvents } from '@/contexts/EventsContext';
-import { registerForPushNotificationsAsync } from '@/hooks/useRegisterForPushNotifications';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -37,7 +36,7 @@ interface AppEvent {
 
 const { width } = Dimensions.get('window');
 
-export default function HomeScreen() {
+export default function ExploreScreen() {
   const { user } = useAuth();
   const { events, attendanceMap, loading, refreshing, refreshEvents, fetchEvents } = useEvents();
   const [selectedFilter, setSelectedFilter] = useState('now'); // Changed default to 'now'
@@ -54,7 +53,7 @@ export default function HomeScreen() {
     extrapolate: 'clamp',
   });
 
-  // Fetch events when screen loads (will use cache if available)
+  // Fetch events when screen loads
   useEffect(() => {
     fetchEvents();
   }, []);
@@ -70,12 +69,6 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     refreshEvents();
   }, [refreshEvents]);
-
-  useEffect(() => {
-    if (user?.id) {
-      registerForPushNotificationsAsync(user.id);
-    }
-  }, [user?.id]);
 
   // Enhanced filtering logic
   const filteredEvents = React.useMemo(() => {
@@ -199,11 +192,11 @@ export default function HomeScreen() {
         <SafeAreaView style={styles.safeArea}>
           <Animated.View style={[styles.header, { opacity: headerOpacity, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
             <View>
-              <Text style={styles.headerTitle}>Right Now</Text>
-              <Text style={styles.headerSubtitle}>What's happening in Hong Kong</Text>
+              <Text style={styles.headerTitle}>Explore</Text>
+              <Text style={styles.headerSubtitle}>Discover events around you</Text>
             </View>
             <TouchableOpacity style={{ padding: 8, marginLeft: 8 }} onPress={() => router.push('/notifications')}>
-              <Ionicons name="notifications-outline" size={28} color="white" />
+              <Ionicons name="notifications" size={28} color="white" />
             </TouchableOpacity>
           </Animated.View>
 
@@ -244,14 +237,14 @@ export default function HomeScreen() {
               </View>
             ) : filteredEvents.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="calendar-outline" size={60} color="#666" />
+                <Ionicons name="search-outline" size={60} color="#666" />
                 <Text style={styles.emptyText}>
                   {searchQuery.trim() ? 'No events found' : 'No events found'}
                 </Text>
                 <Text style={styles.emptySubtext}>
                   {searchQuery.trim() 
                     ? `No events match "${searchQuery}"` 
-                    : 'Check back later for upcoming events'
+                    : 'Try adjusting your filters or search terms'
                   }
                 </Text>
               </View>

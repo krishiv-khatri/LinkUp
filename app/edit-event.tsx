@@ -43,6 +43,7 @@ export default function EditEventScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'friends_only' | 'private'>('public');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,6 +64,7 @@ export default function EditEventScreen() {
         setLocation(event.location);
         setCategory(event.category);
         setDescription(event.description);
+        setVisibility(event.visibility || 'public');
         setSelectedImage(event.coverImage);
         setUploadedImageUrl(event.coverImage);
       } else {
@@ -155,7 +157,7 @@ export default function EditEventScreen() {
   };
 
   const handleUpdateEvent = async () => {
-    if (!title || !time || !location || !category || !description) {
+    if (!title || !time || !location || !category || !description || !visibility) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -184,6 +186,7 @@ export default function EditEventScreen() {
         category,
         coverImage: imageUrl || '',
         description,
+        visibility,
       };
       
       console.log('Updating event with ID:', eventId, 'and updates:', updates);
@@ -375,6 +378,75 @@ export default function EditEventScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Visibility*</Text>
+              <View style={styles.categoryContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.categoryButton,
+                    visibility === 'public' && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setVisibility('public')}
+                >
+                  <Ionicons
+                    name="globe-outline"
+                    size={20}
+                    color={visibility === 'public' ? 'white' : '#888'}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      visibility === 'public' && styles.categoryTextActive
+                    ]}
+                  >
+                    Public
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.categoryButton,
+                    visibility === 'friends_only' && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setVisibility('friends_only')}
+                >
+                  <Ionicons
+                    name="people-outline"
+                    size={20}
+                    color={visibility === 'friends_only' ? 'white' : '#888'}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      visibility === 'friends_only' && styles.categoryTextActive
+                    ]}
+                  >
+                    Friends Only
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.categoryButton,
+                    visibility === 'private' && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setVisibility('private')}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={20}
+                    color={visibility === 'private' ? 'white' : '#888'}
+                  />
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      visibility === 'private' && styles.categoryTextActive
+                    ]}
+                  >
+                    Private
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 

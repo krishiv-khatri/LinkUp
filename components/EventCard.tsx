@@ -36,6 +36,7 @@ interface Event {
   coverImage: string;
   description: string;
   creator_id?: string; // Add creator_id field
+  visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
 }
 
 interface EventCardProps {
@@ -315,17 +316,28 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
             />
 
             <View style={styles.cardInfo}>
-              <View style={styles.categoryBadge}>
-                <LinearGradient
-                  colors={getCategoryGradient(event.category)}
-                  style={styles.categoryGradient}
-                >
-                  <Ionicons 
-                    name={getCategoryIcon(event.category) as any} 
-                    size={12} 
-                    color="white" 
-                  />
-                </LinearGradient>
+              <View style={styles.badgeContainer}>
+                <View style={styles.categoryBadge}>
+                  <LinearGradient
+                    colors={getCategoryGradient(event.category)}
+                    style={styles.categoryGradient}
+                  >
+                    <Ionicons 
+                      name={getCategoryIcon(event.category) as any} 
+                      size={12} 
+                      color="white" 
+                    />
+                  </LinearGradient>
+                </View>
+                {event.visibility && event.visibility !== 'public' && (
+                  <View style={styles.visibilityBadge}>
+                    <Ionicons 
+                      name={event.visibility === 'friends_only' ? 'people-outline' : 'lock-closed-outline'} 
+                      size={10} 
+                      color="#FF006E" 
+                    />
+                  </View>
+                )}
               </View>
 
               <Text style={styles.eventTitle}>{event.title}</Text>
@@ -621,14 +633,33 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 20,
   },
-  categoryBadge: {
+  badgeContainer: {
     position: 'absolute',
     top: -180,
     right: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 10,
+  },
+  categoryBadge: {
     width: 32,
     height: 32,
     borderRadius: 16,
     overflow: 'hidden',
+  },
+  visibilityBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   categoryGradient: {
     flex: 1,
