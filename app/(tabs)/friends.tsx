@@ -8,7 +8,7 @@ import {
   Dimensions,
   Easing,
   Image,
-  ScrollView,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,12 +16,14 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FriendProfileModal from '../../components/FriendProfileModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
-  getFriendsList
+  getFriendsList,
+  setFriendPinned
 } from '../../services/friendService';
 
 const { width } = Dimensions.get('window');
@@ -41,6 +43,7 @@ interface Friend {
   status: string;
   sender?: Profile;
   receiver?: Profile;
+  pinned: boolean;
 }
 
 export default function FriendsScreen() {
@@ -54,8 +57,11 @@ export default function FriendsScreen() {
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false); // <-- Add this state
   // Use a ref to store Animated.Values for each friend
   const buttonWidthsRef = useRef<{ [id: string]: Animated.Value }>({});
+  // Use a ref to store Swipeable refs for each friend
+  const swipeableRefs = useRef<{ [id: string]: Swipeable | null }>({});
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -177,6 +183,18 @@ export default function FriendsScreen() {
     });
   }, [removingId, filteredFriends]);
 
+  // Add this function inside FriendsScreen
+  const onRefresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    await getFriendsList(user.id)
+      .then(({ data }) => setFriends(data || []))
+      .finally(() => setRefreshing(false));
+  };
+
+  const pinnedFriends = filteredFriends.filter(f => f.pinned);
+  const unpinnedFriends = filteredFriends.filter(f => !f.pinned);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
@@ -219,96 +237,180 @@ export default function FriendsScreen() {
             <Text style={{ color: 'white', paddingHorizontal: 20 }}></Text>
           ) : (
             <View style={{ flex: 1 }}>
-              <ScrollView
+              <Animated.ScrollView
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor="#888888"
+                    colors={["#888888"]}
+                    progressBackgroundColor="#1A1A1A"
+                  />
+                }
               >
-                <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}> 
-                  {filteredFriends.map((friend) => {
-                    const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
-                    // Remove are you sure logic, just a simple remove button
-                    const buttonText = 'Remove';
-                    const buttonColor = '#FF1744';
-                    const buttonTextColor = '#FFF';
-                    // Make button wider for text breathing room
-                    const buttonWidth = 70;
-                    const animatedWidth = getButtonWidth(friend.id, buttonWidth);
-
-                    return (
-                      <TouchableOpacity
+                {pinnedFriends.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 20, marginLeft: 4, marginBottom: 16 }}>Pinned Friends</Text>
+                    {pinnedFriends.map((friend) => (
+                      <Swipeable
                         key={friend.id}
+                        ref={(ref) => {
+                          swipeableRefs.current[friend.id] = ref;
+                        }}
+                        renderRightActions={(progress, dragX) => (
+                          <Animated.View
+                            style={{
+                              flex: 1,
+                              justifyContent: 'center',
+                              alignItems: 'flex-end',
+                              backgroundColor: 'transparent',
+                            }}
+                          >
+                            <LinearGradient
+                              colors={['#8338EC', '#3A86FF']}
+                              style={{
+                                width: 64,
+                                height: '80%',
+                                borderRadius: 16,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 8,
+                              }}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                            >
+                              <Ionicons name="pin" size={28} color="#FFF" />
+                            </LinearGradient>
+                          </Animated.View>
+                        )}
+                        rightThreshold={60}
+                        onSwipeableOpen={async () => {
+                          await setFriendPinned(friend.id, false);
+                          if (user) {
+                            getFriendsList(user.id).then(({ data }) => setFriends(data || []));
+                          }
+                          // Close the swipeable after the action is completed
+                          swipeableRefs.current[friend.id]?.close();
+                        }}
+                      >
+                        {/* Friend card UI here, same as before */}
+                        <TouchableOpacity
                         style={styles.friendCard}
                         activeOpacity={0.8}
                         onPress={() => {
+                          const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
                           setSelectedFriend(profile ?? null);
                           setModalVisible(true);
                         }}
                       >
                         <View style={styles.friendInfo}>
-                          {profile?.avatar_url ? (
-                            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-                          ) : (
-                            <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                              <Ionicons name="person" size={28} color="#888" />
-                            </View>
-                          )}
-                          <View style={styles.friendDetails}>
-                            <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
-                            <Text style={styles.friendUsername}>@{profile?.username}</Text>
-                          </View>
-                        </View>
-                        <View style={{
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginRight: 0,
-                        }}>
-                          <TouchableOpacity
-                            activeOpacity={0.85}
-                            style={{
-                              backgroundColor: buttonColor,
-                              borderRadius: 20,
-                              paddingVertical: 6,
-                              paddingHorizontal: 18,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              minWidth: 80,
-                              opacity: removingId === friend.id ? 0.5 : 1,
-                            }}
-                            disabled={removingId === friend.id}
-                            onPress={async (e) => {
-                              e.stopPropagation?.();
-                              setRemovingId(friend.id);
-                              await handleRemoveFriend(friend);
-                              setRemovingId(null);
-                            }}
-                          >
-                            <Text style={{ color: buttonTextColor, fontWeight: 'bold', fontSize: 14 }}>{buttonText}</Text>
-                          </TouchableOpacity>
+                          {(() => {
+                            const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+                            return (
+                              <>
+                                {profile?.avatar_url ? (
+                                  <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                                ) : (
+                                  <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                                    <Ionicons name="person" size={28} color="#888" />
+                                  </View>
+                                )}
+                                <View style={styles.friendDetails}>
+                                  <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
+                                  <Text style={styles.friendUsername}>@{profile?.username}</Text>
+                                </View>
+                              </>
+                            );
+                          })()}
                         </View>
                       </TouchableOpacity>
-                    );
-                  })}
-                </Animated.View>
-                <View style={styles.planningSection}>
-                  <View style={styles.planningSectionHeader}>
-                    <Text style={styles.planningSectionTitle}>PLANNING</Text>
+                      </Swipeable>
+                    ))}
                   </View>
-                  <View style={styles.planningCard}>
-                    <LinearGradient
-                      colors={['#8338EC', '#FF006E']}
-                      style={styles.planningGradient}
-                    >
-                      <View style={styles.planningContent}>
-                        <Text style={styles.planningTitle}>Chillhop Night</Text>
-                        <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
-                        <Text style={styles.planningLocation}>Central</Text>
-                      </View>
-                    </LinearGradient>
+                )}
+                
+                {unpinnedFriends.length > 0 && (
+                  <View>
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 20, marginLeft: 4, marginBottom: 16 }}>Friends</Text>
+                    {unpinnedFriends.map((friend) => (
+                      <Swipeable
+                        key={friend.id}
+                        ref={(ref) => {
+                          swipeableRefs.current[friend.id] = ref;
+                        }}
+                        renderRightActions={(progress, dragX) => (
+                          <Animated.View
+                            style={{
+                              flex: 1,
+                              justifyContent: 'center',
+                              alignItems: 'flex-end',
+                              backgroundColor: 'transparent',
+                            }}
+                          >
+                            <LinearGradient
+                              colors={['#FFB800', '#FF6B00']}
+                              style={{
+                                width: 64,
+                                height: '80%',
+                                borderRadius: 16,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 8,
+                              }}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                            >
+                              <Ionicons name="pin-outline" size={28} color="#FFF" />
+                            </LinearGradient>
+                          </Animated.View>
+                        )}
+                        rightThreshold={60}
+                        onSwipeableOpen={async () => {
+                          await setFriendPinned(friend.id, true);
+                          getFriendsList(user?.id || '').then(({ data }) => setFriends(data || []));
+                          // Close the swipeable after the action is completed
+                          swipeableRefs.current[friend.id]?.close();
+                        }}
+                      >
+                        <TouchableOpacity
+                          style={styles.friendCard}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+                            setSelectedFriend(profile ?? null);
+                            setModalVisible(true);
+                          }}
+                        >
+                          <View style={styles.friendInfo}>
+                            {(() => {
+                              const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
+                              return (
+                                <>
+                                  {profile?.avatar_url ? (
+                                    <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+                                  ) : (
+                                    <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
+                                      <Ionicons name="person" size={28} color="#888" />
+                                    </View>
+                                  )}
+                                  <View style={styles.friendDetails}>
+                                    <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
+                                    <Text style={styles.friendUsername}>@{profile?.username}</Text>
+                                  </View>
+                                </>
+                              );
+                            })()}
+                          </View>
+                        </TouchableOpacity>
+                      </Swipeable>
+                    ))}
                   </View>
-                </View>
+                )}
                 <View style={styles.bottomSpacing} />
-              </ScrollView>
+              </Animated.ScrollView>
             </View>
           )}
           <FriendProfileModal
@@ -366,16 +468,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 8,
   },
   searchInput: {
     flex: 1,
     color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '400',
   },
   scrollView: {
     flex: 1,
@@ -392,7 +496,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#1A1A1A',
     borderRadius: 16,
-    padding: 16,
+    padding: 10,
+    marginBottom: 8,
   },
   friendInfo: {
     flexDirection: 'row',
@@ -400,24 +505,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   friendDetails: {
     flex: 1,
     marginLeft: 16,
   },
   friendName: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '700',
     color: 'white',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   friendUsername: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   addButton: {
     borderRadius: 20,

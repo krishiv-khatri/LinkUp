@@ -130,4 +130,16 @@ export async function getOutgoingFriendRequests(currentUserId: string) {
     .select('*, receiver:profiles!friends_friend_id_fkey(*)')
     .eq('user_id', currentUserId)
     .eq('status', 'pending');
+}
+
+/**
+ * Pin or unpin a friend by id.
+ * @param {string} friendId - The id of the friend row.
+ * @param {boolean} pinned - Whether to pin (true) or unpin (false).
+ */
+export async function setFriendPinned(friendId: string, pinned: boolean) {
+  return await supabase
+    .from('friends')
+    .update({ pinned })
+    .eq('id', friendId);
 } 

@@ -4,26 +4,26 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator, Animated, Easing, Image,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator, Animated, Easing, Image,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
-    acceptFriendRequest,
-    declineFriendRequest,
-    getFriendsList,
-    getIncomingFriendRequests,
-    getOutgoingFriendRequests,
-    searchUsers,
-    sendFriendRequest
+  acceptFriendRequest,
+  declineFriendRequest,
+  getFriendsList,
+  getIncomingFriendRequests,
+  getOutgoingFriendRequests,
+  searchUsers,
+  sendFriendRequest
 } from '../services/friendService';
 
 // Types for friend and friend request
@@ -41,6 +41,7 @@ interface Friend {
   status: string;
   sender?: Profile;
   receiver?: Profile;
+  pinned: boolean;
 }
 
 // Update FriendRequest to optionally include receiver for outgoing requests
@@ -484,16 +485,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 8,
   },
   searchInput: {
     flex: 1,
     color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '400',
   },
   friendCard: {
     flexDirection: 'row',

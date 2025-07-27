@@ -365,14 +365,16 @@ export default function NotificationsScreen() {
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search notifications..."
-          placeholderTextColor="#666"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={18} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search notifications..."
+            placeholderTextColor="#666"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -447,30 +449,40 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: '#000000',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 20,
+    backgroundColor: '#0A0A0A',
   },
   backButton: {
     padding: 4,
     marginRight: 16,
   },
   headerTitle: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
-    flex: 1,
+    fontSize: 32,
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+    color: 'white',
+    fontFamily: 'Georgia',
+    letterSpacing: 0,
+    marginBottom: 0,
   },
   searchContainer: {
+    paddingHorizontal: 20,
+    marginTop: 0,
+    marginBottom: 24,
+  },
+  searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1A1A',
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 20,
-    marginBottom: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    gap: 8,
   },
   searchIcon: {
     marginRight: 12,
@@ -478,7 +490,8 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 14,
+    fontWeight: '400'
   },
   content: {
     flex: 1,
