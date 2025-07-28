@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   invitationTime: {
-    color: '#888',
+    color: '#ffffff',
     fontSize: 12,
   },
   eventImageContainer: {

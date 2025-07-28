@@ -263,26 +263,27 @@ export default function FriendsScreen() {
                         renderRightActions={(progress, dragX) => (
                           <Animated.View
                             style={{
-                              flex: 1,
+                              width: 80,
+                              height: 60,
                               justifyContent: 'center',
-                              alignItems: 'flex-end',
+                              alignItems: 'center',
                               backgroundColor: 'transparent',
+                              marginVertical: 4,
                             }}
                           >
                             <LinearGradient
-                              colors={['#8338EC', '#3A86FF']}
+                              colors={['#FF4444', '#CC0000']}
                               style={{
-                                width: 64,
-                                height: '80%',
+                                width: 56,
+                                height: 52,
                                 borderRadius: 16,
                                 justifyContent: 'center',
                                 alignItems: 'center',
-                                marginRight: 8,
                               }}
                               start={{ x: 0, y: 0 }}
                               end={{ x: 1, y: 1 }}
                             >
-                              <Ionicons name="pin" size={28} color="#FFF" />
+                              <Ionicons name="pin" size={24} color="#FFF" />
                             </LinearGradient>
                           </Animated.View>
                         )}
@@ -299,7 +300,7 @@ export default function FriendsScreen() {
                         {/* Friend card UI here, same as before */}
                         <TouchableOpacity
                         style={styles.friendCard}
-                        activeOpacity={0.8}
+                        activeOpacity={1}
                         onPress={() => {
                           const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
                           setSelectedFriend(profile ?? null);
@@ -344,26 +345,27 @@ export default function FriendsScreen() {
                         renderRightActions={(progress, dragX) => (
                           <Animated.View
                             style={{
-                              flex: 1,
+                              width: 80,
+                              height: 60,
                               justifyContent: 'center',
-                              alignItems: 'flex-end',
+                              alignItems: 'center',
                               backgroundColor: 'transparent',
+                              marginVertical: 4,
                             }}
                           >
                             <LinearGradient
-                              colors={['#FFB800', '#FF6B00']}
+                              colors={['#8338EC', '#FF6B00']}
                               style={{
-                                width: 64,
-                                height: '80%',
+                                width: 56,
+                                height: 52,
                                 borderRadius: 16,
                                 justifyContent: 'center',
                                 alignItems: 'center',
-                                marginRight: 8,
                               }}
                               start={{ x: 0, y: 0 }}
                               end={{ x: 1, y: 1 }}
                             >
-                              <Ionicons name="pin-outline" size={28} color="#FFF" />
+                              <Ionicons name="pin-outline" size={24} color="#FFF" />
                             </LinearGradient>
                           </Animated.View>
                         )}
@@ -377,7 +379,7 @@ export default function FriendsScreen() {
                       >
                         <TouchableOpacity
                           style={styles.friendCard}
-                          activeOpacity={0.8}
+                          activeOpacity={1}
                           onPress={() => {
                             const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
                             setSelectedFriend(profile ?? null);
@@ -494,10 +496,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#000000',
     borderRadius: 16,
     padding: 10,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
   },
   friendInfo: {
     flexDirection: 'row',
@@ -512,6 +516,7 @@ const styles = StyleSheet.create({
   friendDetails: {
     flex: 1,
     marginLeft: 16,
+    paddingTop: 4,
   },
   friendName: {
     fontSize: 14,
