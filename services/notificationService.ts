@@ -8,6 +8,7 @@ export interface InAppNotification {
   data?: any;
   read: boolean;
   created_at: string;
+  updated_going?: boolean;
 }
 
 export const notificationService = {
@@ -40,6 +41,121 @@ export const notificationService = {
     }
   },
 
+  // Create notification for event changes (date, time, location)
+  async createEventChangeNotification(
+    eventId: string, 
+    eventTitle: string, 
+    changeType: 'date' | 'time' | 'location', 
+    oldValue: string, 
+    newValue: string
+  ): Promise<boolean> {
+    try {
+      // Get event creator ID first
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('creator_id')
+        .eq('id', eventId)
+        .single();
+
+      if (eventError) {
+        console.error('Error fetching event creator:', eventError);
+        return false;
+      }
+
+      // Get all attendees for this event, excluding the creator
+      const { data: attendees, error: attendeesError } = await supabase
+        .from('attendees')
+        .select('user_id')
+        .eq('event_id', eventId)
+        .neq('user_id', eventData.creator_id); // Exclude creator
+
+      if (attendeesError) {
+        console.error('Error fetching attendees for event change notification:', attendeesError);
+        return false;
+      }
+
+      if (!attendees || attendees.length === 0) {
+        return true; // No attendees to notify (excluding creator)
+      }
+
+      // Create notifications for all attendees (excluding creator)
+      const notifications = attendees.map(attendee => ({
+        user_id: attendee.user_id,
+        title: 'Event Updated: Do you still want to go?',
+        body: `The ${changeType} for "${eventTitle}" has been changed from ${oldValue} to ${newValue}`,
+        data: {
+          type: 'event_update_attendance',
+          event_id: eventId,
+          change_type: changeType,
+          old_value: oldValue,
+          new_value: newValue,
+          user_id: attendee.user_id
+        },
+        read: false
+      }));
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert(notifications);
+
+      if (error) {
+        console.error('Error creating event change notifications:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error creating event change notification:', error);
+      return false;
+    }
+  },
+
+  // Create notification for event cancellation
+  async createEventCancellationNotification(eventId: string, eventTitle: string): Promise<boolean> {
+    try {
+      // Get all attendees for this event
+      const { data: attendees, error: attendeesError } = await supabase
+        .from('attendees')
+        .select('user_id')
+        .eq('event_id', eventId);
+
+      if (attendeesError) {
+        console.error('Error fetching attendees for cancellation notification:', attendeesError);
+        return false;
+      }
+
+      if (!attendees || attendees.length === 0) {
+        return true; // No attendees to notify
+      }
+
+      // Create notifications for all attendees
+      const notifications = attendees.map(attendee => ({
+        user_id: attendee.user_id,
+        title: 'Event Cancelled',
+        body: `"${eventTitle}" has been cancelled`,
+        data: {
+          type: 'event_cancellation',
+          event_id: eventId
+        },
+        read: false
+      }));
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert(notifications);
+
+      if (error) {
+        console.error('Error creating event cancellation notifications:', error);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error creating event cancellation notification:', error);
+      return false;
+    }
+  },
+
   // Get notifications for a user
   async getUserNotifications(userId: string): Promise<InAppNotification[]> {
     const { data, error } = await supabase
@@ -65,6 +181,24 @@ export const notificationService = {
 
     if (error) {
       console.error('Error marking notification as read:', error);
+      return false;
+    }
+
+    return true;
+  },
+
+  // Update event update notification response
+  async updateEventUpdateResponse(notificationId: string, isStillGoing: boolean): Promise<boolean> {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ 
+        updated_going: isStillGoing,
+        read: true 
+      })
+      .eq('id', notificationId);
+
+    if (error) {
+      console.error('Error updating event update response:', error);
       return false;
     }
 

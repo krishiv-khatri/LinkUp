@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { notificationService } from './notificationService';
 
 export interface Event {
   id: string;
@@ -459,6 +460,20 @@ export const eventService = {
     try {
       console.log('Deleting event with ID:', eventId);
       
+      // Get event details before deletion for notification
+      const { data: eventData, error: fetchError } = await supabase
+        .from('events')
+        .select('title, creator_id')
+        .eq('id', eventId)
+        .single();
+      
+      if (!fetchError && eventData) {
+        // Send cancellation notification to all attendees
+        await notificationService.createEventCancellationNotification(eventId, eventData.title);
+      } else {
+        console.error('Error fetching event data for cancellation notification:', fetchError);
+      }
+      
       // First, delete all attendees for this event
       const { error: attendeesError } = await supabase
         .from('attendees')
@@ -502,6 +517,18 @@ export const eventService = {
     try {
       console.log('Updating event with ID:', eventId, 'Updates:', updates);
       
+      // Get the current event data to compare changes
+      const { data: currentEvent, error: fetchError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      
+      if (fetchError) {
+        console.error('Error fetching current event data:', fetchError);
+        return null;
+      }
+      
       const { data, error } = await supabase
         .from('events')
         .update({
@@ -530,6 +557,102 @@ export const eventService = {
       }
       
       console.log('Event updated successfully:', data);
+      
+      // Check for changes and send notifications
+      if (currentEvent) {
+        console.log('Current event data:', currentEvent);
+        console.log('Update data:', updates);
+        
+        const changes: Array<{ type: 'date' | 'time' | 'location', oldValue: string, newValue: string }> = [];
+        
+        // Check for date changes - normalize date formats for comparison
+        if (updates.date) {
+          // Normalize both dates to YYYY-MM-DD format
+          const currentDate = new Date(currentEvent.event_date);
+          const newDate = new Date(updates.date);
+          
+          // Compare dates by converting to YYYY-MM-DD strings
+          const currentDateStr = currentDate.toISOString().split('T')[0];
+          const newDateStr = newDate.toISOString().split('T')[0];
+          
+          console.log('Date comparison:', { 
+            currentEventDate: currentEvent.event_date,
+            currentDate: currentDate,
+            currentDateStr,
+            newDate: updates.date,
+            newDateObj: newDate,
+            newDateStr,
+            areEqual: currentDateStr === newDateStr
+          });
+          
+          if (currentDateStr !== newDateStr) {
+            console.log('Date change detected:', { 
+              old: currentEvent.event_date, 
+              new: updates.date,
+              oldFormatted: currentDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+              }),
+              newFormatted: newDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+              })
+            });
+            changes.push({
+              type: 'date',
+              oldValue: currentDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+              }),
+              newValue: newDate.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+              })
+            });
+          } else {
+            console.log('No date change detected - dates are equal');
+          }
+        }
+        
+        // Check for time changes
+        if (updates.time && currentEvent.time !== updates.time) {
+          console.log('Time change detected:', { old: currentEvent.time, new: updates.time });
+          changes.push({
+            type: 'time',
+            oldValue: currentEvent.time,
+            newValue: updates.time
+          });
+        }
+        
+        // Check for location changes
+        if (updates.location && currentEvent.location !== updates.location) {
+          console.log('Location change detected:', { old: currentEvent.location, new: updates.location });
+          changes.push({
+            type: 'location',
+            oldValue: currentEvent.location,
+            newValue: updates.location
+          });
+        }
+        
+        console.log('Total changes detected:', changes.length);
+        
+        // Send notifications for each change
+        for (const change of changes) {
+          console.log('Sending notification for change:', change);
+          const notificationResult = await notificationService.createEventChangeNotification(
+            eventId,
+            data.title,
+            change.type,
+            change.oldValue,
+            change.newValue
+          );
+          console.log('Notification result:', notificationResult);
+        }
+      }
       
       return {
         id: data.id,
@@ -794,7 +917,11 @@ export const eventService = {
       return data.map(invitation => ({
         ...invitation,
         event: invitation.events,
-        inviter: profiles?.find(p => p.id === invitation.inviter_id) || null
+        inviter: profiles?.find(p => p.id === invitation.inviter_id) || null,
+        // Add default values for new fields if they don't exist
+        invitation_type: invitation.invitation_type || 'regular',
+        change_details: invitation.change_details || null,
+        message: invitation.message || null
       }));
     }
 

@@ -20,6 +20,7 @@ import FriendProfileModal from '../../components/FriendProfileModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { eventService } from '../../services/eventService';
+import { notificationService } from '../../services/notificationService';
 
 interface NotificationItem {
   id: string;
@@ -28,6 +29,8 @@ interface NotificationItem {
   avatar_url?: string;
   created_at: string;
   read: boolean;
+  data?: any;
+  updated_going?: boolean; // Added for event update notifications
 }
 
 interface EventInvitation {
@@ -93,6 +96,7 @@ export default function NotificationsScreen() {
     if (!user) return;
     
     try {
+      console.log('Loading event invitations for user:', user.id);
       const invitations = await eventService.getUserInvitations(user.id);
       setEventInvitations(invitations);
     } catch (error) {
@@ -162,7 +166,10 @@ export default function NotificationsScreen() {
       const hosted = allEvents.filter(e => e.creator_id === user.id);
       setHostedEvents(hosted);
 
-      // 3. Generate notifications for attended events
+      // 3. Fetch database notifications
+      const dbNotifications = await notificationService.getUserNotifications(user.id);
+      
+      // 4. Generate notifications for attended events
       let notifList: NotificationItem[] = [];
 
       // Event reminders for attending events
@@ -222,11 +229,33 @@ export default function NotificationsScreen() {
         }
       }
 
-      // Sort by most recent
-      notifList.sort((a: NotificationItem, b: NotificationItem) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // 5. Combine database notifications with generated notifications
+      const dbNotificationItems: NotificationItem[] = dbNotifications.map(dbNotif => ({
+        id: dbNotif.id,
+        title: dbNotif.title,
+        body: dbNotif.body,
+        avatar_url: undefined, // Database notifications don't have avatars
+        created_at: dbNotif.created_at,
+        read: dbNotif.read,
+        data: dbNotif.data,
+        updated_going: dbNotif.updated_going, // Make sure this field is included
+      }));
+
+      console.log('Database notifications loaded:', dbNotificationItems.map(n => ({
+        id: n.id,
+        title: n.title,
+        updated_going: n.updated_going,
+        data_type: n.data?.type
+      })));
+
+      // Combine and sort all notifications
+      const allNotifications = [...notifList, ...dbNotificationItems];
+      allNotifications.sort((a: NotificationItem, b: NotificationItem) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
 
       // Final filter to ensure no reminders or RSVP notifications for own events
-      const filteredNotifList = notifList.filter(n => {
+      const filteredNotifList = allNotifications.filter(n => {
         // Filter event reminders
         if (n.id.includes('-reminder-') && n.body.includes('Your event')) {
           const eventId = n.id.split('-reminder-')[0];
@@ -353,6 +382,160 @@ export default function NotificationsScreen() {
     );
   };
 
+  const renderEventUpdateNotification = (notification: NotificationItem) => {
+    const isResponding = respondingToInvite === notification.id;
+    const isEventUpdate = notification.data?.type === 'event_update_attendance';
+    const hasResponded = notification.updated_going !== null && notification.updated_going !== undefined;
+    
+    console.log('Rendering event update notification:', {
+      id: notification.id,
+      title: notification.title,
+      updated_going: notification.updated_going,
+      hasResponded,
+      isEventUpdate
+    });
+    
+    // If user has already responded, show the result instead of choices
+    if (hasResponded && isEventUpdate) {
+      return (
+        <View key={notification.id} style={[styles.notificationCard, styles.read]}> 
+          <View style={styles.notificationInfo}>
+            <View style={styles.avatarPlaceholder}>
+              <Ionicons name="time-outline" size={24} color="#FF6B00" />
+            </View>
+            <View style={styles.textInfo}>
+              <Text style={styles.notificationTitle}>Event Updated</Text>
+              <Text style={styles.notificationBody}>{notification.body}</Text>
+              <View style={styles.responseStatusRow}>
+                <Ionicons 
+                  name={notification.updated_going ? "checkmark-circle" : "close-circle"} 
+                  size={16} 
+                  color={notification.updated_going ? "#4CAF50" : "#F44336"} 
+                />
+                <Text style={[styles.responseStatusText, { 
+                  color: notification.updated_going ? "#4CAF50" : "#F44336",
+                  marginLeft: 8
+                }]}>
+                  {notification.updated_going ? "You're still going" : "You're no longer going"}
+                </Text>
+              </View>
+              <Text style={styles.timestamp}>{formatTimeAgo(notification.created_at)}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    
+    // Show choices if user hasn't responded yet
+    return (
+      <TouchableOpacity 
+        key={notification.id} 
+        style={styles.invitationCard}
+        onPress={() => {
+          toast.info('Event details updated');
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={styles.invitationHeader}>
+          <View style={[styles.avatarPlaceholder, { width: 40, height: 40, borderRadius: 20 }]}>
+            <Ionicons name="time-outline" size={20} color="#FF6B00" />
+          </View>
+          <View style={styles.invitationInfo}>
+            <Text style={styles.invitationTitle}>
+              <Text style={styles.notificationTitle}>Event Updated</Text>
+              <Text style={styles.notificationTitle}>Do you still want to go?</Text>
+            </Text>
+            <Text style={styles.notificationBody}>{notification.body}</Text>
+            <Text style={styles.timestamp}>
+              {formatTimeAgo(notification.created_at)}
+            </Text>
+          </View>
+        </View>
+        
+        <View style={styles.invitationActions}>
+          <TouchableOpacity
+            style={styles.declineButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleEventUpdateResponse(notification.id, 'decline');
+            }}
+            disabled={isResponding}
+          >
+            {isResponding ? (
+              <ActivityIndicator size="small" color="#FF3B30" />
+            ) : (
+              <Text style={styles.declineButtonText}>Can't make it</Text>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.acceptButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleEventUpdateResponse(notification.id, 'accept');
+            }}
+            disabled={isResponding}
+          >
+            {isResponding ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.acceptButtonText}>Can still attend</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const handleEventUpdateResponse = async (notificationId: string, response: 'accept' | 'decline') => {
+    setRespondingToInvite(notificationId);
+    try {
+      if (response === 'decline') {
+        // Find the notification to get the event ID
+        const notification = notifications.find(n => n.id === notificationId);
+        if (notification?.data?.event_id && user) {
+          // Remove user's RSVP from the event
+          const success = await eventService.cancelRsvp(notification.data.event_id, user.id);
+          if (success) {
+            toast.success('You\'ve been removed from the event');
+          } else {
+            toast.error('Failed to remove RSVP');
+            return;
+          }
+        } else {
+          toast.success('You\'ve been removed from the event');
+        }
+      } else {
+        // User confirms they can still attend
+        toast.success('Great! You\'re still attending');
+      }
+      
+      // Update the notification with the user's response
+      const success = await notificationService.updateEventUpdateResponse(
+        notificationId, 
+        response === 'accept'
+      );
+      
+      if (success) {
+        // Update the notification in the local state
+        setNotifications(prev => prev.map(n => 
+          n.id === notificationId 
+            ? { ...n, updated_going: response === 'accept', read: true }
+            : n
+        ));
+      } else {
+        toast.error('Failed to update notification');
+        return;
+      }
+      
+    } catch (error) {
+      console.error('Error handling event update response:', error);
+      toast.error('Something went wrong');
+    } finally {
+      setRespondingToInvite(null);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
@@ -396,26 +579,42 @@ export default function NotificationsScreen() {
               {filteredNotifications.length === 0 ? (
                 <Text style={{ color: '#666', fontStyle: 'italic' }}>No notifications found</Text>
               ) : (
-                filteredNotifications.map(n => (
-                  <View key={n.id} style={[styles.notificationCard, n.read ? styles.read : styles.unread]}> 
-                    <View style={styles.notificationInfo}>
-                      {n.avatar_url ? (
-                        <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
-                      ) : (
-                        <View style={styles.avatarPlaceholder}>
-                          <Text style={styles.avatarText}>
-                            {n.title.slice(0, 1).toUpperCase()}
-                          </Text>
+                filteredNotifications.map(n => {
+                  // Check if this is an event update notification
+                  if (n.title === 'Event Updated: Do you still want to go?') {
+                    return renderEventUpdateNotification(n);
+                  }
+                  
+                  // Regular notification rendering
+                  return (
+                    <View key={n.id} style={[styles.notificationCard, n.read ? styles.read : styles.unread]}> 
+                      <View style={styles.notificationInfo}>
+                        {n.avatar_url ? (
+                          <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
+                        ) : (
+                          <View style={styles.avatarPlaceholder}>
+                            {n.title === 'Event Updated' ? (
+                              <Ionicons name="time-outline" size={24} color="#FF6B00" />
+                            ) : n.title === 'Event Cancelled' ? (
+                              <Ionicons name="close-circle-outline" size={24} color="#FF3B30" />
+                            ) : n.title === 'Event Invitation' ? (
+                              <Ionicons name="mail-outline" size={24} color="#007AFF" />
+                            ) : (
+                              <Text style={styles.avatarText}>
+                                {n.title.slice(0, 1).toUpperCase()}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                        <View style={styles.textInfo}>
+                          <Text style={styles.notificationTitle}>{n.title}</Text>
+                          <Text style={styles.notificationBody}>{n.body}</Text>
+                          <Text style={styles.timestamp}>{formatTimeAgo(n.created_at)}</Text>
                         </View>
-                      )}
-                      <View style={styles.textInfo}>
-                        <Text style={styles.notificationTitle}>{n.title}</Text>
-                        <Text style={styles.notificationBody}>{n.body}</Text>
-                        <Text style={styles.timestamp}>{formatTimeAgo(n.created_at)}</Text>
                       </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
           )}
@@ -576,7 +775,6 @@ const styles = StyleSheet.create({
   },
   invitationCard: {
     backgroundColor: '#1A1A1A',
-    marginHorizontal: 20,
     marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -677,5 +875,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     letterSpacing: 0.5,
+  },
+  responseStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  responseStatusText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  responseStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
   },
 }); 

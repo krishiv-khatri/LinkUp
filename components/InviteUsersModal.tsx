@@ -5,15 +5,15 @@ import { UserProfile, userService } from '@/services/userService';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -170,43 +170,32 @@ export default function InviteUsersModal({ visible, onClose, eventId, eventTitle
     setInviting(true);
     try {
       console.log('Inviting users:', selectedUsers.map(u => u.display_name || u.username));
-      const inviteeIds = selectedUsers.map(u => u.id);
-      const success = await eventService.inviteUsersToEvent(eventId, user.id, inviteeIds);
+      const inviterName = user.displayName || user.username || 'Someone';
       
-      if (success) {
-        toast.success(`Invited ${selectedUsers.length} user(s) to ${eventTitle}`);
-        
-        // Send notifications to invited users
-        const inviterName = user.displayName || user.username || 'Someone';
-        
-        // Send push notifications and create in-app notifications
-        for (const invitedUser of selectedUsers) {
-          try {
-            // Create in-app notification (if notifications table exists)
-            await notificationService.createEventInvitationNotification(
-              invitedUser.id,
-              inviterName,
-              eventTitle,
-              eventId
-            );
-            
-            // Send push notification
-            await notificationService.sendPushNotificationForInvitation(
-              invitedUser.id,
-              inviterName,
-              eventTitle
-            );
-          } catch (error) {
-            console.error('Error sending notification to user:', invitedUser.id, error);
-            // Continue with other users even if one fails
-          }
+      // Send push notifications and create invitations
+      for (const invitedUser of selectedUsers) {
+        try {
+          // Create event invitation using event service
+          await eventService.inviteUsersToEvent(
+            eventId,
+            user.id,
+            [invitedUser.id]
+          );
+          
+          // Send push notification
+          await notificationService.sendPushNotificationForInvitation(
+            invitedUser.id,
+            inviterName,
+            eventTitle
+          );
+        } catch (error) {
+          console.error('Error sending invitation to user:', invitedUser.id, error);
+          // Continue with other users even if one fails
         }
-        
-        console.log('Invitations sent successfully, calling onClose');
-        onClose();
-      } else {
-        toast.error('Failed to send invitations');
       }
+      
+      console.log('Invitations sent successfully, calling onClose');
+      onClose();
     } catch (error) {
       console.error('Error inviting users:', error);
       toast.error('Something went wrong');
