@@ -189,8 +189,15 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
             </View>
 
             {/* Name, stats, and socials */}
-            <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'flex-start' , marginLeft: 20}}>
-              <Text style={[styles.name, { marginBottom: 12, marginTop: 0 }]}>{friend.display_name || friend.username}</Text>
+            <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'flex-start' , marginLeft: 20, marginRight: 40}}>
+              <Text 
+                style={[styles.name, { marginBottom: 12, marginTop: 0 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit={true}
+                minimumFontScale={0.7}
+              >
+                {friend.display_name || friend.username}
+              </Text>
 
               {/* Container for stats and socials */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
@@ -638,6 +645,7 @@ const styles = StyleSheet.create({
   swipeModal: {
     justifyContent: 'flex-end',
     margin: 0,
+    zIndex: 999999, // Very high z-index to appear above other modals
   },
   fadeGradient: {
     position: 'absolute',

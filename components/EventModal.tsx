@@ -7,14 +7,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { toast } from 'sonner-native';
 
@@ -30,6 +30,8 @@ interface Event {
   coverImage: string;
   description: string;
   creator_id?: string;
+  creator_name?: string;
+  creator_avatar?: string;
   visibility?: 'public' | 'friends_only' | 'private';
 }
 

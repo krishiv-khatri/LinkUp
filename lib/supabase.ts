@@ -18,6 +18,21 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
+// Wrap fetch to log failing requests to help diagnose "Network request failed"
+const loggingFetch = async (input: any, init?: any) => {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    try {
+      const method = init?.method || 'GET';
+      const url = typeof input === 'string' ? input : input?.url || String(input);
+      // Keep the log concise to avoid flooding the console
+      console.error('Network request failed:', method, url);
+    } catch {}
+    throw error;
+  }
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: Platform.OS === 'web' ? undefined : ExpoSecureStoreAdapter,
@@ -26,6 +41,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
   global: {
-    fetch: fetch,
+    fetch: loggingFetch,
   },
 }); 

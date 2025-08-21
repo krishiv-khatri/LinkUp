@@ -13,6 +13,8 @@ export interface Event {
   coverImage: string;
   description: string;
   creator_id?: string; // Add creator_id field
+  creator_name?: string; // Add creator name field
+  creator_avatar?: string; // Add creator avatar field
   visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
 }
 
@@ -88,10 +90,37 @@ export const eventService = {
       }
     });
     
-    // Combine events with their attendee data
-    return events.map(event => {
+    // Get all creator IDs to fetch creator profiles in one query
+    const creatorIds = events
+      .map(event => event.creator_id)
+      .filter(id => id) // Remove undefined/null values
+      .filter((id, index, arr) => arr.indexOf(id) === index); // Remove duplicates
+    
+    // Single query to get all creator profiles
+    console.log('🔍 Fetching creator profiles for IDs:', creatorIds);
+    const { data: creatorProfiles, error: creatorsError } = await supabase
+      .from('profiles')
+      .select('id, display_name, username, avatar_url')
+      .in('id', creatorIds);
+    
+    if (creatorsError) {
+      console.error('Error fetching creator profiles', creatorsError);
+    } else {
+      console.log('✅ Creator profiles fetched:', creatorProfiles);
+    }
+    
+    // Create a map of creator profiles by ID
+    const creatorProfilesMap = new Map<string, any>();
+    creatorProfiles?.forEach(profile => {
+      creatorProfilesMap.set(profile.id, profile);
+    });
+    
+    // Combine events with their attendee data and creator information
+    const result = events.map(event => {
       const attendingFriends = attendeesByEvent.get(event.id) || [];
-      return {
+      const creatorProfile = event.creator_id ? creatorProfilesMap.get(event.creator_id) : null;
+      
+      const eventWithCreator = {
         id: event.id,
         title: event.title,
         time: event.time,
@@ -103,9 +132,17 @@ export const eventService = {
         description: event.description,
         attendingFriends: attendingFriends.slice(0, 5), // Limit to 5 for display
         creator_id: event.creator_id,
+        creator_name: creatorProfile?.display_name || creatorProfile?.username || 'Unknown Host',
+        creator_avatar: creatorProfile?.avatar_url || `https://api.a0.dev/assets/image?text=H&aspect=1:1&seed=${event.creator_id || 'host'}`,
         visibility: event.visibility || 'public'
       };
+      
+      console.log(`🎯 Event "${event.title}": creator_id=${event.creator_id}, creator_name=${eventWithCreator.creator_name}`);
+      
+      return eventWithCreator;
     });
+    
+    return result;
   },
   
   // Get a single event by ID
@@ -142,6 +179,22 @@ export const eventService = {
       console.error('Error fetching attendees for event', id, attendeesError);
     }
     
+    // Get creator profile information
+    let creatorProfile = null;
+    if (event.creator_id) {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('display_name, username, avatar_url')
+        .eq('id', event.creator_id)
+        .single();
+      
+      if (profileError) {
+        console.error('Error fetching creator profile', profileError);
+      } else {
+        creatorProfile = profile;
+      }
+    }
+    
     const attendingFriends = attendees?.map(a => a.avatar_url) || [];
     const attendingCount = attendees?.length || 0;
     
@@ -157,6 +210,8 @@ export const eventService = {
       description: event.description,
       attendingFriends: attendingFriends.slice(0, 5), // Limit to 5 for display
       creator_id: event.creator_id,
+      creator_name: creatorProfile?.display_name || creatorProfile?.username || 'Unknown Host',
+      creator_avatar: creatorProfile?.avatar_url || `https://api.a0.dev/assets/image?text=H&aspect=1:1&seed=${event.creator_id || 'host'}`,
       visibility: event.visibility || 'public'
     };
   },
@@ -407,7 +462,8 @@ export const eventService = {
           cover_image,
           description,
           created_at,
-          creator_id
+          creator_id,
+          visibility
         `)
         .in('id', eventIds)
         .order('event_date', { ascending: true });
@@ -416,6 +472,28 @@ export const eventService = {
         console.error('Error fetching RSVP events:', eventsError);
         return [];
       }
+
+      // Get all creator IDs to fetch creator profiles in one query
+      const creatorIds = events
+        .map(event => event.creator_id)
+        .filter(id => id) // Remove undefined/null values
+        .filter((id, index, arr) => arr.indexOf(id) === index); // Remove duplicates
+      
+      // Single query to get all creator profiles
+      const { data: creatorProfiles, error: creatorsError } = await supabase
+        .from('profiles')
+        .select('id, display_name, username, avatar_url')
+        .in('id', creatorIds);
+      
+      if (creatorsError) {
+        console.error('Error fetching creator profiles', creatorsError);
+      }
+      
+      // Create a map of creator profiles by ID
+      const creatorProfilesMap = new Map<string, any>();
+      creatorProfiles?.forEach(profile => {
+        creatorProfilesMap.set(profile.id, profile);
+      });
 
       // Get attendee information for each event
       const eventsWithAttendees = await Promise.all(
@@ -431,6 +509,7 @@ export const eventService = {
           
           const attendingFriends = attendees?.map(a => a.avatar_url) || [];
           const attendingCount = attendees?.length || 0;
+          const creatorProfile = event.creator_id ? creatorProfilesMap.get(event.creator_id) : null;
           
           return {
             id: event.id,
@@ -443,7 +522,10 @@ export const eventService = {
             coverImage: event.cover_image,
             description: event.description,
             attendingFriends: attendingFriends.slice(0, 5),
-            creator_id: event.creator_id
+            creator_id: event.creator_id,
+            creator_name: creatorProfile?.display_name || creatorProfile?.username || 'Unknown Host',
+            creator_avatar: creatorProfile?.avatar_url || `https://api.a0.dev/assets/image?text=H&aspect=1:1&seed=${event.creator_id || 'host'}`,
+            visibility: event.visibility || 'public'
           };
         })
       );

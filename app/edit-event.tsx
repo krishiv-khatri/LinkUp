@@ -29,6 +29,9 @@ const CATEGORIES = [
   { id: 'party', label: 'Party', icon: 'wine' },
   { id: 'art', label: 'Art', icon: 'color-palette' },
   { id: 'food', label: 'Food', icon: 'restaurant' },
+  { id: 'business', label: 'Business', icon: 'briefcase' },
+  { id: 'sport', label: 'Sport', icon: 'fitness' },
+  { id: 'tech', label: 'Tech', icon: 'laptop' },
 ];
 
 export default function EditEventScreen() {

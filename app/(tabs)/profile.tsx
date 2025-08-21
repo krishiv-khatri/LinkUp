@@ -10,18 +10,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    Linking,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Linking,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -41,6 +41,9 @@ interface Event {
   attendingCount: number;
   attendingFriends: string[];
   creator_id?: string;
+  creator_name?: string;
+  creator_avatar?: string;
+  visibility?: 'public' | 'friends_only' | 'private';
 }
 
 interface SocialPlatform {
@@ -234,6 +237,8 @@ export default function ProfileScreen() {
             try {
               await signOut();
               toast.success('You\'ve been signed out successfully');
+              // Navigate to onboarding screen after successful sign out
+              router.replace('/(auth)/onboarding');
             } catch (error) {
               console.error('Sign out error:', error);
               toast.error('Something went wrong while signing out. Please try again.');
@@ -677,8 +682,12 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   avatarContainer: {
-    position: 'relative',
+    position: 'absolute',
     marginBottom: 20,
+    alignSelf: 'flex-start',
+    marginLeft: 30,
+    marginTop: 30,
+    
   },
   avatarRing: {
     position: 'absolute',
@@ -707,12 +716,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+    marginLeft: 140,
+    marginTop: -10,
   },
   socialHandles: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 10,
+    marginLeft: 120,
+    textAlign: 'center',
   },
   socialHandle: {
     color: '#888',
@@ -726,6 +740,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginLeft: 120,
   },
   editButton: {
     borderRadius: 25,
@@ -734,8 +749,8 @@ const styles = StyleSheet.create({
   editButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     gap: 6,
   },
   editButtonText: {
@@ -744,8 +759,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   shareButton: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     borderRadius: 22,
     backgroundColor: '#1A1A1A',
     alignItems: 'center',
