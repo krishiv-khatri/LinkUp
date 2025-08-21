@@ -216,7 +216,7 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
                 </View>
 
                 {/* Social Icons */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 16, marginLeft: 20 }}>
                   {friendSocialHandles.map((social, index) => (
                     <TouchableOpacity
                       key={index}
