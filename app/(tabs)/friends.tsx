@@ -1,12 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
   Dimensions,
-  Easing,
   Image,
   ScrollView,
   StatusBar,
@@ -54,8 +52,6 @@ export default function FriendsScreen() {
   const [selectedFriend, setSelectedFriend] = useState<Profile | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  // Use a ref to store Animated.Values for each friend
-  const buttonWidthsRef = useRef<{ [id: string]: Animated.Value }>({});
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -100,21 +96,35 @@ export default function FriendsScreen() {
     );
   });
 
-  // Remove friend handler (optional, if you want to keep this feature)
+  // Remove friend handler
   const handleRemoveFriend = async (friend: Friend) => {
     if (!user) return;
-    setLoadingFriends(true);
-    console.log('Attempting to remove friend:', friend);
-    // Friendship can be in either direction
-    const { error, data } = await supabase.from('friends').delete().eq('id', friend.id).eq('status', 'accepted');
-    console.log('Delete result:', { error, data });
-    if (error) {
-      Alert.alert('Error', 'Failed to remove friend: ' + error.message);
-    }
-    // Refetch friends
-    getFriendsList(user.id)
-      .then(({ data }) => setFriends(data || []))
-      .finally(() => setLoadingFriends(false));
+    
+    Alert.alert(
+      'Remove Friend',
+      `Are you sure you want to remove ${friend.user_id === user.id ? friend.receiver?.display_name || friend.receiver?.username : friend.sender?.display_name || friend.sender?.username}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingId(friend.id);
+            try {
+              const { error } = await supabase.from('friends').delete().eq('id', friend.id);
+              if (error) {
+                Alert.alert('Error', 'Failed to remove friend: ' + error.message);
+              } else {
+                // Refetch friends
+                getFriendsList(user.id).then(({ data }) => setFriends(data || []));
+              }
+            } finally {
+              setRemovingId(null);
+            }
+          }
+        }
+      ]
+    );
   };
 
   useEffect(() => {
@@ -153,30 +163,6 @@ export default function FriendsScreen() {
     };
   }, [user]);
 
-  // Helper to get or create an Animated.Value for a friend
-  const getButtonWidth = (id: string, initial: number) => {
-    if (!buttonWidthsRef.current[id]) {
-      buttonWidthsRef.current[id] = new Animated.Value(initial);
-    }
-    return buttonWidthsRef.current[id];
-  };
-
-  // Animate the button width when confirmingRemoveId changes
-  useEffect(() => {
-    filteredFriends.forEach(friend => {
-      const isConfirming = removingId === friend.id;
-      // Make button wider for text breathing room
-      const buttonWidth = isConfirming ? 110 : 70;
-      const animatedWidth = getButtonWidth(friend.id, buttonWidth);
-      Animated.timing(animatedWidth, {
-        toValue: buttonWidth,
-        duration: 250,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    });
-  }, [removingId, filteredFriends]);
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
@@ -185,27 +171,23 @@ export default function FriendsScreen() {
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.headerTitle}>Friends</Text>
-              {/* Optionally add a subtitle here, e.g.: */}
-              {/* <Text style={styles.headerSubtitle}>Your connections on LinkUp</Text> */}
+              <Text style={styles.headerSubtitle}>{friends.length} connection{friends.length !== 1 ? 's' : ''}</Text>
             </View>
             <TouchableOpacity
               style={styles.addFriendsButton}
               onPress={() => router.push('/addfriends')}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
             >
-              <LinearGradient
-                colors={["#FFFFFF", "#8D8294"]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.addFriendsButtonGradient}
-              >
-                <Text style={styles.addFriendsButtonText}>Add Friends</Text>
-              </LinearGradient>
+              <View style={styles.addFriendsButtonContent}>
+                <Ionicons name="person-add" size={18} color="#000" />
+                <Text style={styles.addFriendsButtonText}>Add</Text>
+              </View>
             </TouchableOpacity>
           </View>
+          
           <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
-              <Ionicons name="search" size={18} color="#666" />
+              <Ionicons name="search" size={20} color="#666" />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search friends..."
@@ -215,102 +197,98 @@ export default function FriendsScreen() {
               />
             </View>
           </View>
+          
           {loadingFriends ? (
-            <Text style={{ color: 'white', paddingHorizontal: 20 }}></Text>
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading friends...</Text>
+            </View>
           ) : (
-            <View style={{ flex: 1 }}>
-              <ScrollView
-                style={styles.scrollView}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-              >
+            <ScrollView
+              style={styles.scrollView}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {filteredFriends.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="people-outline" size={80} color="#333" />
+                  <Text style={styles.emptyTitle}>
+                    {searchQueryFriends ? 'No friends found' : 'No friends yet'}
+                  </Text>
+                  <Text style={styles.emptySubtitle}>
+                    {searchQueryFriends 
+                      ? 'Try searching with a different name' 
+                      : 'Start connecting with people around you'
+                    }
+                  </Text>
+                  {!searchQueryFriends && (
+                    <TouchableOpacity 
+                      style={styles.emptyButton}
+                      onPress={() => router.push('/addfriends')}
+                    >
+                      <Text style={styles.emptyButtonText}>Find Friends</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
                 <Animated.View style={[styles.friendsList, { opacity: fadeAnim }]}> 
                   {filteredFriends.map((friend) => {
                     const profile = friend.user_id === user?.id ? friend.receiver : friend.sender;
-                    // Remove are you sure logic, just a simple remove button
-                    const buttonText = 'Remove';
-                    const buttonColor = '#FF1744';
-                    const buttonTextColor = '#FFF';
-                    // Make button wider for text breathing room
-                    const buttonWidth = 70;
-                    const animatedWidth = getButtonWidth(friend.id, buttonWidth);
+                    const isRemoving = removingId === friend.id;
 
                     return (
                       <TouchableOpacity
                         key={friend.id}
-                        style={styles.friendCard}
-                        activeOpacity={0.8}
+                        style={[styles.friendCard, isRemoving && styles.friendCardRemoving]}
+                        activeOpacity={0.7}
                         onPress={() => {
                           setSelectedFriend(profile ?? null);
                           setModalVisible(true);
                         }}
+                        disabled={isRemoving}
                       >
                         <View style={styles.friendInfo}>
                           {profile?.avatar_url ? (
                             <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
                           ) : (
-                            <View style={[styles.avatar, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}> 
-                              <Ionicons name="person" size={28} color="#888" />
+                            <View style={styles.avatarPlaceholder}> 
+                              <Ionicons name="person" size={28} color="#666" />
                             </View>
                           )}
                           <View style={styles.friendDetails}>
-                            <Text style={styles.friendName}>{profile?.display_name || profile?.username}</Text>
-                            <Text style={styles.friendUsername}>@{profile?.username}</Text>
+                            <Text style={styles.friendName} numberOfLines={1}>
+                              {profile?.display_name || profile?.username}
+                            </Text>
+                            <Text style={styles.friendUsername} numberOfLines={1}>
+                              @{profile?.username}
+                            </Text>
                           </View>
                         </View>
-                        <View style={{
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginRight: 0,
-                        }}>
-                          <TouchableOpacity
-                            activeOpacity={0.85}
-                            style={{
-                              backgroundColor: buttonColor,
-                              borderRadius: 20,
-                              paddingVertical: 6,
-                              paddingHorizontal: 18,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              minWidth: 80,
-                              opacity: removingId === friend.id ? 0.5 : 1,
-                            }}
-                            disabled={removingId === friend.id}
-                            onPress={async (e) => {
-                              e.stopPropagation?.();
-                              setRemovingId(friend.id);
-                              await handleRemoveFriend(friend);
-                              setRemovingId(null);
-                            }}
-                          >
-                            <Text style={{ color: buttonTextColor, fontWeight: 'bold', fontSize: 14 }}>{buttonText}</Text>
-                          </TouchableOpacity>
-                        </View>
+                        
+                        <TouchableOpacity
+                          style={[styles.removeButton, isRemoving && styles.removeButtonDisabled]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            if (!isRemoving) {
+                              handleRemoveFriend(friend);
+                            }
+                          }}
+                          disabled={isRemoving}
+                        >
+                          <Ionicons 
+                            name={isRemoving ? "ellipsis-horizontal" : "person-remove"} 
+                            size={16} 
+                            color={isRemoving ? "#666" : "#FF3B30"} 
+                          />
+                        </TouchableOpacity>
                       </TouchableOpacity>
                     );
                   })}
                 </Animated.View>
-                <View style={styles.planningSection}>
-                  <View style={styles.planningSectionHeader}>
-                    <Text style={styles.planningSectionTitle}>PLANNING</Text>
-                  </View>
-                  <View style={styles.planningCard}>
-                    <LinearGradient
-                      colors={['#8338EC', '#FF006E']}
-                      style={styles.planningGradient}
-                    >
-                      <View style={styles.planningContent}>
-                        <Text style={styles.planningTitle}>Chillhop Night</Text>
-                        <Text style={styles.planningDetails}>Tonight • 9:00 PM</Text>
-                        <Text style={styles.planningLocation}>Central</Text>
-                      </View>
-                    </LinearGradient>
-                  </View>
-                </View>
-                <View style={styles.bottomSpacing} />
-              </ScrollView>
-            </View>
+              )}
+              <View style={styles.bottomSpacing} />
+            </ScrollView>
           )}
+          
           <FriendProfileModal
             visible={modalVisible}
             friend={selectedFriend}
@@ -332,11 +310,11 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: 20, // match index tab
+    paddingTop: 8,
+    paddingBottom: 20,
   },
   headerTitle: {
     fontSize: 32,
@@ -345,7 +323,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontFamily: 'Georgia',
     letterSpacing: -0.5,
-    marginBottom: 0,
+    marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 14,
@@ -353,14 +331,32 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     letterSpacing: 0.2,
   },
-  headerIconButton: {
-    padding: 8,
-    marginLeft: 8,
+  addFriendsButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  addFriendsButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  addFriendsButtonText: {
+    color: '#000',
+    fontWeight: '600',
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
   searchContainer: {
-    paddingHorizontal: 20,
-    marginTop: 0,
-    marginBottom: 24, // match index tab
+    paddingHorizontal: 24,
+    marginBottom: 24,
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -370,21 +366,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
   },
   searchInput: {
     flex: 1,
     color: 'white',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '400',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   friendsList: {
-    gap: 16,
+    gap: 12,
   },
   friendCard: {
     flexDirection: 'row',
@@ -393,6 +391,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
     borderRadius: 16,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  friendCardRemoving: {
+    opacity: 0.5,
   },
   friendInfo: {
     flexDirection: 'row',
@@ -400,96 +408,94 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#333',
+  },
+  avatarPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#444',
   },
   friendDetails: {
     flex: 1,
     marginLeft: 16,
   },
   friendName: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '600',
     color: 'white',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   friendUsername: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
+    color: '#888',
   },
-  addButton: {
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  addButtonGradient: {
-    width: 40,
-    height: 40,
+  removeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  planningSection: {
-    marginTop: 32,
+  removeButtonDisabled: {
+    backgroundColor: 'rgba(102, 102, 102, 0.1)',
+    borderColor: 'rgba(102, 102, 102, 0.2)',
   },
-  planningSectionHeader: {
-    marginBottom: 16,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
-  planningSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
+  loadingText: {
     color: '#666',
-    letterSpacing: 1,
+    fontSize: 16,
+    textAlign: 'center',
   },
-  planningCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
   },
-  planningGradient: {
-    padding: 20,
-  },
-  planningContent: {
-    alignItems: 'flex-start',
-  },
-  planningTitle: {
+  emptyTitle: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: '600',
     color: 'white',
+    textAlign: 'center',
+    marginTop: 24,
     marginBottom: 8,
   },
-  planningDetails: {
+  emptySubtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 4,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
   },
-  planningLocation: {
+  emptyButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  emptyButtonText: {
+    color: '#000',
+    fontWeight: '600',
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
   },
   bottomSpacing: {
     height: 100,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 10,
-  },
-  addFriendsButton: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginLeft: 8,
-    marginTop: 2,
-  },
-  addFriendsButtonGradient: {
-    paddingVertical: 6,
-    paddingHorizontal: 18,
-    minWidth: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addFriendsButtonText: {
-    color: '#111',
-    fontWeight: 'bold',
-    fontSize: 15,
-    letterSpacing: 0.2,
   },
 }); 

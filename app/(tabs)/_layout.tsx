@@ -9,6 +9,7 @@ import { Colors } from '@/constants/Colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { eventService } from '@/services/eventService';
+import { getIncomingFriendRequests } from '@/services/friendService';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
@@ -26,8 +27,12 @@ export default function TabLayout() {
         const invitations = await eventService.getUserInvitations(user.id);
         const pendingInvitations = invitations.length;
         
+        // Get pending friend requests (all are considered unread)
+        const { data: friendRequests } = await getIncomingFriendRequests(user.id);
+        const pendingFriendRequests = friendRequests?.length || 0;
+        
         // You can add other notification sources here
-        const totalUnread = pendingInvitations;
+        const totalUnread = pendingInvitations + pendingFriendRequests;
         
         setUnreadNotificationCount(totalUnread);
       } catch (error) {
