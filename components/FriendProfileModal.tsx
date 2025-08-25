@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { Animated, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NativeViewGestureHandler } from 'react-native-gesture-handler';
@@ -30,6 +29,13 @@ interface UserEvent {
   event_date?: string;
   attendingCount?: number;
   attendingFriends?: string[];
+}
+
+interface MutualFriend {
+  id: string;
+  username?: string;
+  display_name?: string;
+  avatar_url?: string;
 }
 
 const socialPlatforms = {
@@ -108,6 +114,67 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
   const [friendCount, setFriendCount] = React.useState<number | null>(null);
   const [attendedCount, setAttendedCount] = React.useState<number | null>(null);
   const [modalSwipeEnabled, setModalSwipeEnabled] = React.useState(true);
+  const [mutualFriends, setMutualFriends] = React.useState<MutualFriend[]>([]);
+  const [loadingMutuals, setLoadingMutuals] = React.useState(false);
+
+  // Fetch mutual friends
+  const fetchMutualFriends = async (friendId: string, currentUserId: string) => {
+    setLoadingMutuals(true);
+    try {
+      // Get the current user's friends
+      const { data: myFriends } = await supabase
+        .from('friends')
+        .select('user_id, friend_id')
+        .or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`)
+        .eq('status', 'accepted');
+
+      // Get the friend's friends
+      const { data: theirFriends } = await supabase
+        .from('friends')
+        .select('user_id, friend_id')
+        .or(`user_id.eq.${friendId},friend_id.eq.${friendId}`)
+        .eq('status', 'accepted');
+
+      if (!myFriends || !theirFriends) {
+        setMutualFriends([]);
+        return;
+      }
+
+      // Extract friend IDs for current user
+      const myFriendIds = new Set(
+        myFriends.map(f => f.user_id === currentUserId ? f.friend_id : f.user_id)
+      );
+
+      // Extract friend IDs for the other user
+      const theirFriendIds = new Set(
+        theirFriends.map(f => f.user_id === friendId ? f.friend_id : f.user_id)
+      );
+
+      // Find mutual friends (excluding current user and the friend)
+      const mutualIds = [...myFriendIds].filter(id => 
+        theirFriendIds.has(id) && id !== currentUserId && id !== friendId
+      );
+
+      if (mutualIds.length === 0) {
+        setMutualFriends([]);
+        return;
+      }
+
+      // Fetch profile details for mutual friends
+      const { data: mutualProfiles } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', mutualIds)
+        .limit(6); // Limit to 6 mutual friends for display
+
+      setMutualFriends(mutualProfiles || []);
+    } catch (error) {
+      console.error('Error fetching mutual friends:', error);
+      setMutualFriends([]);
+    } finally {
+      setLoadingMutuals(false);
+    }
+  };
 
   // Fetch number of friends and attended events
   React.useEffect(() => {
@@ -159,6 +226,19 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
     }
   }, [visible, friend?.id]);
 
+  // Fetch mutual friends when modal opens
+  React.useEffect(() => {
+    if (visible && friend?.id) {
+      // Get current user ID from somewhere (you might need to pass this as a prop)
+      // For now, I'll assume you can get it from context or supabase auth
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user && friend.id) {
+          fetchMutualFriends(friend.id, user.id);
+        }
+      });
+    }
+  }, [visible, friend?.id]);
+
   if (!friend) return null;
   const firstName = friend.display_name?.split(' ')[0] || friend.username?.split(' ')[0] || 'Friend';
   const friendSocialHandles = getFriendSocialHandles(friend);
@@ -178,69 +258,112 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
         <View style={styles.modalContent}>
           {/* Close button in top right */}
           <TouchableOpacity onPress={onClose} style={styles.closeIconButton}>
-            <Ionicons name="close" size={28} color="#FFF" />
+            <Ionicons name="close" size={24} color="#FFF" />
           </TouchableOpacity>
-         {/* Top row: avatar, name, socials */}
-         <View style={{ flexDirection: 'row', width: '100%', alignItems: 'flex-start', marginBottom: 0 }}>
-            {/* Avatar and username ONLY */}
-            <View style={{ alignItems: 'center', width: 90 }}>
-              <Image source={{ uri: friend.avatar_url }} style={[styles.avatar, { marginBottom: 4, width: 64, height: 64 }]} />
-              <Text style={[styles.username, { marginBottom: 8, marginTop: 0, fontSize: 14 }]}>@{friend.username}</Text>
+          
+          {/* Profile Header */}
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              <Image 
+                source={{ 
+                  uri: friend.avatar_url || `https://api.a0.dev/assets/image?text=${friend?.display_name?.slice(0, 1) || friend?.username?.slice(0, 1) || 'U'}&aspect=1:1&seed=${friend.id}` 
+                }} 
+                style={styles.profileAvatar} 
+              />
             </View>
-
-            {/* Name, stats, and socials */}
-            <View style={{ flex: 1, alignItems: 'stretch', justifyContent: 'flex-start' , marginLeft: 20}}>
-              <Text style={[styles.name, { marginBottom: 12, marginTop: 0 }]}>{friend.display_name || friend.username}</Text>
-
-              {/* Container for stats and socials */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                {/* Stats */}
-                <View>
-                  <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600' }}>
-                    {friendCount === 1
-                      ? '1 friend'
-                      : `${friendCount ?? '-'} friends`}
+            
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>
+                {friend.display_name || friend.username}
+              </Text>
+              <Text style={styles.profileUsername}>@{friend.username}</Text>
+              
+              {/* Stats Row */}
+              <View style={styles.statsRow}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>
+                    {friendCount === null ? '-' : friendCount}
                   </Text>
-                  <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '600', marginTop: 4 }}>
-                    {attendedCount === 1
-                      ? '1 event attended'
-                      : `${attendedCount ?? '-'} events attended`}
+                  <Text style={styles.statLabel}>
+                    {friendCount === 1 ? 'friend' : 'friends'}
                   </Text>
                 </View>
-
-                {/* Social Icons */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 16 }}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>
+                    {attendedCount === null ? '-' : attendedCount}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    {attendedCount === 1 ? 'event' : 'events'}
+                  </Text>
+                </View>
+              </View>
+              
+              {/* Social Icons */}
+              {friendSocialHandles.length > 0 && (
+                <View style={styles.socialIconsRow}>
                   {friendSocialHandles.map((social, index) => (
                     <TouchableOpacity
                       key={index}
                       onPress={() => handleSocialPress(social.platform, social.handle)}
+                      style={styles.socialIcon}
                     >
-                      <Ionicons name={social.icon as any} size={22} color={social.color} />
+                      <Ionicons name={social.icon as any} size={20} color={social.color} />
                     </TouchableOpacity>
                   ))}
                 </View>
-              </View>
+              )}
             </View>
           </View>
 
+          {/* Mutual Friends Section */}
+          {mutualFriends.length > 0 && (
+            <View style={styles.mutualSection}>
+              <Text style={styles.mutualTitle}>
+                {mutualFriends.length} mutual friend{mutualFriends.length > 1 ? 's' : ''}
+              </Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.mutualScrollView}
+                contentContainerStyle={styles.mutualScrollContent}
+              >
+                {mutualFriends.map((mutual, index) => (
+                  <View key={mutual.id} style={styles.mutualFriendItem}>
+                    <Image
+                      source={{ 
+                        uri: mutual.avatar_url || `https://api.a0.dev/assets/image?text=${mutual?.display_name?.slice(0, 1) || mutual?.username?.slice(0, 1) || 'U'}&aspect=1:1&seed=${mutual.id}` 
+                      }}
+                      style={styles.mutualAvatar}
+                    />
+                    <Text style={styles.mutualName} numberOfLines={1}>
+                      {mutual.display_name?.split(' ')[0] || mutual.username}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           <View style={styles.divider} />
 
-          <Text style={styles.sectionTitle}>{firstName}'s Plans:</Text>
-          <View style={{ maxHeight: 240, width: '100%' }}>
+          {/* Events Sections */}
+          <Text style={styles.sectionTitle}>{firstName}'s Upcoming Events</Text>
+          <View style={styles.eventsContainer}>
             <NativeViewGestureHandler>
               <ScrollView
-                style={{ width: '100%' }}
-                contentContainerStyle={{ paddingBottom: 12 }}
+                style={styles.eventsScrollView}
+                contentContainerStyle={styles.eventsScrollContent}
                 nestedScrollEnabled={true}
                 keyboardShouldPersistTaps="handled"
                 scrollEnabled={true}
                 onTouchStart={() => setModalSwipeEnabled(false)}
                 onTouchEnd={() => setModalSwipeEnabled(true)}
                 onScrollEndDrag={() => setModalSwipeEnabled(true)}
+                showsVerticalScrollIndicator={false}
               >
                 <View>
                   {loadingEvents ? (
-                    <Text style={styles.loadingText}>Loading plans...</Text>
+                    <Text style={styles.loadingText}>Loading events...</Text>
                   ) : (() => {
                     // Only show future events
                     const now = new Date();
@@ -250,28 +373,28 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
                     });
                     if (futureEvents.length === 0) {
                       return (
-                        <View style={{ minHeight: 48, justifyContent: 'center' }}>
-                          <Text style={styles.emptyText}>No upcoming events.</Text>
+                        <View style={styles.emptyStateContainer}>
+                          <Ionicons name="calendar-outline" size={48} color="#555" />
+                          <Text style={styles.emptyText}>No upcoming events</Text>
                         </View>
                       );
                     }
                     return futureEvents.map(event => (
                       <View
                         key={event.id}
-                        style={[styles.eventCard, {
-                          backgroundColor: getPastelColor(event.id),
-                          borderWidth: 1.5,
-                          borderColor: 'rgba(255,255,255,0.18)',
-                        }]}
+                        style={styles.eventCard}
                       >
                         <Image
                           source={{ uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}` }}
                           style={styles.eventImage}
                         />
                         <View style={styles.eventInfo}>
-                          <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                          <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
                           <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
-                            {formatEventTime(event.event_date || event.time)} • {event.location}
+                            {formatEventTime(event.event_date || event.time)}
+                          </Text>
+                          <Text style={styles.eventLocation} numberOfLines={1} ellipsizeMode="tail">
+                            📍 {event.location}
                           </Text>
                           <View style={styles.eventMeta}>
                             {/* Attendee avatars */}
@@ -298,91 +421,6 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
                 </View>
               </ScrollView>
             </NativeViewGestureHandler>
-            <LinearGradient
-              colors={['rgba(26, 26, 26, 0)', '#1A1A1A']}
-              style={styles.fadeGradient}
-              pointerEvents="none"
-            />
-          </View>
-          {/* Attended (past) events section */}
-          <Text style={styles.sectionTitle}>{firstName} Attended:</Text>
-          <View style={{ maxHeight: 240, width: '100%' }}>
-            <NativeViewGestureHandler>
-              <ScrollView
-                style={{ width: '100%' }}
-                contentContainerStyle={{ paddingBottom: 12 }}
-                nestedScrollEnabled={true}
-                keyboardShouldPersistTaps="handled"
-                scrollEnabled={true}
-                onTouchStart={() => setModalSwipeEnabled(false)}
-                onTouchEnd={() => setModalSwipeEnabled(true)}
-                onScrollEndDrag={() => setModalSwipeEnabled(true)}
-              >
-                <View>
-                  {loadingEvents ? (
-                    <Text style={styles.loadingText}>Loading attended events...</Text>
-                  ) : (() => {
-                    // Only show past events
-                    const now = new Date();
-                    const pastEvents = friendEvents.filter(event => {
-                      const date = new Date(event.event_date || event.time);
-                      return date < now;
-                    });
-                    if (pastEvents.length === 0) {
-                      return (
-                        <View style={{ minHeight: 48, justifyContent: 'center' }}>
-                          <Text style={styles.emptyText}>No attended events.</Text>
-                        </View>
-                      );
-                    }
-                    return pastEvents.map(event => (
-                      <View
-                        key={event.id}
-                        style={[styles.eventCard, {
-                          backgroundColor: getPastelColor(event.id),
-                          borderWidth: 1.5,
-                          borderColor: 'rgba(255,255,255,0.18)',
-                        }]}
-                      >
-                        <Image
-                          source={{ uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}` }}
-                          style={styles.eventImage}
-                        />
-                        <View style={styles.eventInfo}>
-                          <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                          <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
-                            {formatEventTime(event.event_date || event.time)} • {event.location}
-                          </Text>
-                          <View style={styles.eventMeta}>
-                            {/* Attendee avatars */}
-                            <View style={styles.friendAvatars}>
-                              {event.attendingFriends && event.attendingFriends.slice(0, 3).map((avatar, idx) => (
-                                <Image
-                                  key={idx}
-                                  source={{ uri: avatar }}
-                                  style={[styles.friendAvatar, { marginLeft: idx > 0 ? -8 : 0 }]}
-                                />
-                              ))}
-                              {event.attendingFriends && event.attendingFriends.length > 3 && (
-                                <View style={[styles.friendAvatar, styles.moreCount, { marginLeft: -8 }]}> 
-                                  <Text style={styles.moreCountText}>+{event.attendingFriends.length - 3}</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={styles.attendingText}>{event.attendingCount || 0} going</Text>
-                          </View>
-                        </View>
-                      </View>
-                    ));
-                  })()}
-                </View>
-              </ScrollView>
-            </NativeViewGestureHandler>
-            <LinearGradient
-              colors={['rgba(26, 26, 26, 0)', '#1A1A1A']}
-              style={styles.fadeGradient}
-              pointerEvents="none"
-            />
           </View>
         </View>
       </View>
@@ -462,68 +500,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     alignItems: 'stretch',
-    height: '90%',
+    height: '85%',
     justifyContent: 'flex-start',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 16,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'white',
-    fontFamily: 'Georgia',
-    fontStyle: 'italic',
-  },
-  username: {
-    fontSize: 16,
-    color: '#888',
-    marginBottom: 16,
-  },
-  divider: {
-    height: 1,
-    width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginVertical: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 8,
-    marginTop: 8,
-    alignSelf: 'flex-start',
-  },
-  planCard: {
-    borderRadius: 12,
-    backgroundColor: '#222',
-    padding: 12,
-    marginBottom: 8,
-  },
-  planTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFF',
-    marginBottom: 2,
-  },
-  planDetails: {
-    fontSize: 14,
-    color: '#888',
-  },
-  loadingText: {
-    color: '#888',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
-  emptyText: {
-    color: '#888',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 10,
   },
   closeIconButton: {
     position: 'absolute',
@@ -531,75 +509,156 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 10,
     padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
   },
-  socialsContainer: {
-    gap: 12,
-    width: '100%',
+  profileHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
     marginTop: 16,
   },
-  socialItem: {
-    flexDirection: 'row',
+  avatarContainer: {
+    marginBottom: 16,
+  },
+  profileAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#333',
+    borderWidth: 3,
+    borderColor: '#2A2A2A',
+  },
+  profileInfo: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
   },
-  socialInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+  profileName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  socialIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  socialTextContainer: {
-    flex: 1,
-  },
-  socialPlatformName: {
+  profileUsername: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    color: '#888',
+    marginBottom: 16,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 32,
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
     marginBottom: 2,
   },
-  socialPlatformHandle: {
+  statLabel: {
     fontSize: 14,
     color: '#888',
+  },
+  socialIconsRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  socialIcon: {
+    padding: 8,
+  },
+  mutualSection: {
+    marginBottom: 20,
+  },
+  mutualTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
+    marginBottom: 12,
+  },
+  mutualScrollView: {
+    flexGrow: 0,
+  },
+  mutualScrollContent: {
+    paddingRight: 16,
+  },
+  mutualFriendItem: {
+    alignItems: 'center',
+    marginRight: 16,
+    width: 60,
+  },
+  mutualAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#333',
+    marginBottom: 6,
+  },
+  mutualName: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+  },
+  divider: {
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  eventsContainer: {
+    flex: 1,
+  },
+  eventsScrollView: {
+    flex: 1,
+  },
+  eventsScrollContent: {
+    paddingBottom: 20,
   },
   eventCard: {
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#1A1A1A',
+    backgroundColor: '#2A2A2A',
     flexDirection: 'row',
-    alignItems: 'center',
-    height: 100,
-    padding: 12,
-    marginBottom: 10,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   eventImage: {
-    width: 80,
-    height: 76,
-    borderRadius: 12,
-    marginRight: 12,
+    width: 100,
+    height: 100,
+    backgroundColor: '#333',
   },
   eventInfo: {
     flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    justifyContent: 'center',
+    padding: 16,
+    justifyContent: 'space-between',
   },
   eventTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFF',
-    marginBottom: 2,
+    marginBottom: 6,
+    lineHeight: 22,
   },
   eventDetails: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 4,
+  },
+  eventLocation: {
     fontSize: 14,
     color: '#888',
     marginBottom: 8,
@@ -614,36 +673,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   friendAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#1A1A1A',
+    borderColor: '#2A2A2A',
   },
   moreCount: {
-    backgroundColor: '#333',
+    backgroundColor: '#555',
     justifyContent: 'center',
     alignItems: 'center',
   },
   moreCountText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
   },
   attendingText: {
     color: '#888',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
+  },
+  loadingText: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    color: '#888',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 12,
   },
   swipeModal: {
     justifyContent: 'flex-end',
     margin: 0,
-  },
-  fadeGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 40,
   },
 }); 

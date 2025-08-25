@@ -20,7 +20,11 @@ import FriendProfileModal from '../../components/FriendProfileModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { eventService } from '../../services/eventService';
-import { notificationService } from '../../services/notificationService';
+import {
+  acceptFriendRequest,
+  declineFriendRequest,
+  getIncomingFriendRequests
+} from '../../services/friendService';
 
 interface NotificationItem {
   id: string;
@@ -41,6 +45,20 @@ interface EventInvitation {
   created_at: string;
   event: any;
   inviter: any;
+}
+
+interface FriendRequest {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  created_at: string;
+  sender?: {
+    id: string;
+    username?: string;
+    display_name?: string;
+    avatar_url?: string;
+  };
 }
 
 function getNotificationTimes(eventDateTime: Date) {
@@ -72,6 +90,7 @@ export default function NotificationsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [eventInvitations, setEventInvitations] = useState<EventInvitation[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [profileModalVisible, setProfileModalVisible] = useState(false);
@@ -80,6 +99,7 @@ export default function NotificationsScreen() {
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [eventModalVisible, setEventModalVisible] = useState(false);
   const [respondingToInvite, setRespondingToInvite] = useState<string | null>(null);
+  const [respondingToFriendRequest, setRespondingToFriendRequest] = useState<string | null>(null);
 
   // Handler to fetch and show profile modal
   const handleShowProfile = async (userId: string) => {
@@ -104,11 +124,27 @@ export default function NotificationsScreen() {
     }
   };
 
+  const loadFriendRequests = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await getIncomingFriendRequests(user.id);
+      if (error) {
+        console.error('Error loading friend requests:', error);
+      } else {
+        setFriendRequests(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading friend requests:', error);
+    }
+  };
+
   // Function to count total unread notifications
   const getUnreadNotificationCount = () => {
     const unreadEventInvitations = eventInvitations.length; // All pending invitations are unread
+    const unreadFriendRequests = friendRequests.length; // All pending friend requests are unread
     const unreadNotifications = notifications.filter(n => !n.read).length;
-    return unreadEventInvitations + unreadNotifications;
+    return unreadEventInvitations + unreadFriendRequests + unreadNotifications;
   };
 
   const handleRespondToInvitation = async (invitationId: string, response: 'accepted' | 'declined') => {
@@ -127,6 +163,36 @@ export default function NotificationsScreen() {
       toast.error('Something went wrong');
     } finally {
       setRespondingToInvite(null);
+    }
+  };
+
+  const handleRespondToFriendRequest = async (requestId: string, response: 'accepted' | 'declined', senderId?: string) => {
+    setRespondingToFriendRequest(requestId);
+    try {
+      if (response === 'accepted') {
+        await acceptFriendRequest(requestId);
+        // Clean up mutual pending request if exists
+        if (user && senderId) {
+          await supabase
+            .from('friends')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('friend_id', senderId)
+            .eq('status', 'pending');
+        }
+        toast.success('Friend request accepted!');
+      } else {
+        await declineFriendRequest(requestId);
+        toast.success('Friend request declined');
+      }
+      
+      // Remove the request from the list
+      setFriendRequests(prev => prev.filter(req => req.id !== requestId));
+    } catch (error) {
+      console.error('Error responding to friend request:', error);
+      toast.error('Something went wrong');
+    } finally {
+      setRespondingToFriendRequest(null);
     }
   };
 
@@ -155,8 +221,11 @@ export default function NotificationsScreen() {
     if (!user) return;
     setLoading(true);
     (async () => {
-      // Load event invitations
-      await loadEventInvitations();
+      // Load event invitations and friend requests
+      await Promise.all([
+        loadEventInvitations(),
+        loadFriendRequests()
+      ]);
       
       // 1. Get RSVP'ed events (attending)
       const attendingEvents = await eventService.getRSVPdEvents(user.id);
@@ -279,6 +348,31 @@ export default function NotificationsScreen() {
     })();
   }, [user]);
 
+  // Subscribe to friend requests changes
+  useEffect(() => {
+    if (!user) return;
+    
+    const channel = supabase
+      .channel('public:friends-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'friends',
+          filter: `friend_id=eq.${user.id}`,
+        },
+        () => {
+          loadFriendRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
   // Fix the sorting to have proper typing - find and fix the sort function that's causing the error
   const filteredNotifications = notifications
     .filter((n: NotificationItem) => 
@@ -288,6 +382,70 @@ export default function NotificationsScreen() {
     .sort((a: NotificationItem, b: NotificationItem) => 
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     ); // Most recent at the top
+
+  const renderFriendRequest = (request: FriendRequest) => {
+    const sender = request.sender;
+    const isResponding = respondingToFriendRequest === request.id;
+    
+    return (
+      <TouchableOpacity 
+        key={request.id} 
+        style={styles.friendRequestCard}
+        onPress={() => sender && handleShowProfile(sender.id)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.friendRequestHeader}>
+          <Image 
+            source={{ 
+              uri: sender?.avatar_url || `https://api.a0.dev/assets/image?text=${sender?.display_name?.slice(0, 1) || sender?.username?.slice(0, 1) || 'U'}&aspect=1:1&seed=${request.user_id}` 
+            }} 
+            style={styles.senderAvatar} 
+          />
+          <View style={styles.friendRequestInfo}>
+            <Text style={styles.friendRequestTitle}>
+              <Text style={styles.senderName}>{sender?.display_name || sender?.username || 'Someone'}</Text>
+              <Text style={styles.requestText}> sent you a friend request</Text>
+            </Text>
+            <Text style={styles.friendRequestTime}>
+              {formatTimeAgo(request.created_at)}
+            </Text>
+          </View>
+        </View>
+        
+        <View style={styles.friendRequestActions}>
+          <TouchableOpacity
+            style={styles.declineButtonFriend}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleRespondToFriendRequest(request.id, 'declined');
+            }}
+            disabled={isResponding}
+          >
+            {isResponding ? (
+              <ActivityIndicator size="small" color="#FF3B30" />
+            ) : (
+              <Text style={styles.declineButtonTextFriend}>Decline</Text>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.acceptButtonFriend}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleRespondToFriendRequest(request.id, 'accepted', sender?.id);
+            }}
+            disabled={isResponding}
+          >
+            {isResponding ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.acceptButtonTextFriend}>Accept</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderEventInvitation = (invitation: EventInvitation) => {
     const event = invitation.event;
@@ -544,6 +702,13 @@ export default function NotificationsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Notifications</Text>
+        {(friendRequests.length > 0 || eventInvitations.length > 0) && (
+          <View style={styles.badgeContainer}>
+            <Text style={styles.badgeText}>
+              {friendRequests.length + eventInvitations.length}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Search Bar */}
@@ -561,6 +726,14 @@ export default function NotificationsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Friend Requests Section */}
+        {friendRequests.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Friend Requests</Text>
+            {friendRequests.map(renderFriendRequest)}
+          </View>
+        )}
+
         {/* Event Invitations Section */}
         {eventInvitations.length > 0 && (
           <View style={styles.section}>
@@ -576,34 +749,25 @@ export default function NotificationsScreen() {
             </View>
           ) : (
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
-              {filteredNotifications.length === 0 ? (
-                <Text style={{ color: '#666', fontStyle: 'italic' }}>No notifications found</Text>
-              ) : (
-                filteredNotifications.map(n => {
-                  // Check if this is an event update notification
-                  if (n.title === 'Event Updated: Do you still want to go?') {
-                    return renderEventUpdateNotification(n);
-                  }
-                  
-                  // Regular notification rendering
-                  return (
+              {filteredNotifications.length === 0 && friendRequests.length === 0 && eventInvitations.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="notifications-outline" size={80} color="#333" />
+                  <Text style={styles.emptyTitle}>No notifications</Text>
+                  <Text style={styles.emptySubtitle}>You're all caught up!</Text>
+                </View>
+              ) : filteredNotifications.length === 0 ? null : (
+                <View>
+                  <Text style={styles.sectionTitle}>Activity</Text>
+                  {filteredNotifications.map(n => (
                     <View key={n.id} style={[styles.notificationCard, n.read ? styles.read : styles.unread]}> 
                       <View style={styles.notificationInfo}>
                         {n.avatar_url ? (
                           <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
                         ) : (
                           <View style={styles.avatarPlaceholder}>
-                            {n.title === 'Event Updated' ? (
-                              <Ionicons name="time-outline" size={24} color="#FF6B00" />
-                            ) : n.title === 'Event Cancelled' ? (
-                              <Ionicons name="close-circle-outline" size={24} color="#FF3B30" />
-                            ) : n.title === 'Event Invitation' ? (
-                              <Ionicons name="mail-outline" size={24} color="#007AFF" />
-                            ) : (
-                              <Text style={styles.avatarText}>
-                                {n.title.slice(0, 1).toUpperCase()}
-                              </Text>
-                            )}
+                            <Text style={styles.avatarText}>
+                              {n.title.slice(0, 1).toUpperCase()}
+                            </Text>
                           </View>
                         )}
                         <View style={styles.textInfo}>
@@ -613,8 +777,8 @@ export default function NotificationsScreen() {
                         </View>
                       </View>
                     </View>
-                  );
-                })
+                  ))}
+                </View>
               )}
             </ScrollView>
           )}
@@ -649,23 +813,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: 20,
-    backgroundColor: '#0A0A0A',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 16,
+    backgroundColor: '#000000',
   },
   backButton: {
     padding: 4,
     marginRight: 16,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    fontStyle: 'italic',
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '700',
+    flex: 1,
+  },
+  badgeContainer: {
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  badgeText: {
     color: 'white',
-    fontFamily: 'Georgia',
-    letterSpacing: 0,
-    marginBottom: 0,
+    fontSize: 12,
+    fontWeight: '600',
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -698,6 +873,27 @@ const styles = StyleSheet.create({
   spinnerContainer: {
     marginTop: 50,
     alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: 'white',
+    textAlign: 'center',
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
   },
   notificationCard: {
     backgroundColor: '#1A1A1A',
@@ -762,7 +958,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   
-  // New styles for event invitations
+  // New styles for sections
   section: {
     marginBottom: 24,
   },
@@ -773,8 +969,84 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 20,
   },
+
+  // Friend request styles
+  friendRequestCard: {
+    backgroundColor: '#1A1A1A',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 16,
+  },
+  friendRequestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  senderAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
+  friendRequestInfo: {
+    flex: 1,
+  },
+  friendRequestTitle: {
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  senderName: {
+    fontWeight: '600',
+    color: '#FF006E',
+  },
+  requestText: {
+    color: '#ffffff',
+  },
+  friendRequestTime: {
+    color: '#888',
+    fontSize: 12,
+  },
+  friendRequestActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  declineButtonFriend: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  declineButtonTextFriend: {
+    color: '#FF3B30',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  acceptButtonFriend: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButtonTextFriend: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Event invitation styles
   invitationCard: {
     backgroundColor: '#1A1A1A',
+    marginHorizontal: 20,
     marginBottom: 16,
     borderRadius: 16,
     overflow: 'hidden',
