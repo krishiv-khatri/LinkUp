@@ -6,7 +6,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,11 +29,15 @@ const CATEGORIES = [
   { id: 'party', label: 'Party', icon: 'wine' },
   { id: 'art', label: 'Art', icon: 'color-palette' },
   { id: 'food', label: 'Food', icon: 'restaurant' },
+  { id: 'business', label: 'Business', icon: 'briefcase' },
+  { id: 'sport', label: 'Sport', icon: 'fitness' },
+  { id: 'tech', label: 'Tech', icon: 'laptop' },
 ];
 
 export default function EditEventScreen() {
   const { user } = useAuth();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
+  const scrollViewRef = useRef<ScrollView>(null);
   const [title, setTitle] = useState('');
   const [time, setTime] = useState('');
   const [date, setDate] = useState(new Date());
@@ -81,12 +85,14 @@ export default function EditEventScreen() {
   };
 
   const pickImage = async () => {
+    // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       toast.error('Permission to access camera roll is required!');
       return;
     }
 
+    // Show action sheet to choose between camera and gallery
     Alert.alert(
       'Select Image',
       'Choose how you want to select your cover image',
@@ -107,7 +113,10 @@ export default function EditEventScreen() {
     });
 
     if (!result.canceled) {
+      // Set the local image immediately for preview
       setSelectedImage(result.assets[0].uri);
+      
+      // Upload in the background
       uploadImageToSupabase(result.assets[0].uri);
     }
   };
@@ -127,7 +136,10 @@ export default function EditEventScreen() {
     });
 
     if (!result.canceled) {
+      // Set the local image immediately for preview
       setSelectedImage(result.assets[0].uri);
+      
+      // Upload in the background
       uploadImageToSupabase(result.assets[0].uri);
     }
   };
@@ -140,6 +152,7 @@ export default function EditEventScreen() {
       const uploadResult = await imageUploadService.uploadEventCover(imageUri);
       
       if (uploadResult.success && uploadResult.publicUrl) {
+        // Store the uploaded URL
         setUploadedImageUrl(uploadResult.publicUrl);
         return uploadResult.publicUrl;
       } else {
@@ -212,9 +225,11 @@ export default function EditEventScreen() {
 
   const onDateChange = (event: any, selectedDate: Date | undefined) => {
     if (Platform.OS === 'android') {
+      // On Android, hide the picker immediately
       setShowDatePicker(false);
     }
     
+    // Update the date if a new date was selected
     if (selectedDate) {
       setDate(selectedDate);
     }
@@ -232,13 +247,7 @@ export default function EditEventScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <Stack.Screen 
-          options={{
-            title: '',
-            headerStyle: { backgroundColor: '#0A0A0A' },
-            headerTintColor: 'white',
-          }}
-        />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF006E" />
           <Text style={styles.loadingText}>Loading event...</Text>
@@ -248,284 +257,327 @@ export default function EditEventScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen 
-        options={{
-          title: '',
-          headerStyle: { backgroundColor: '#0A0A0A' },
-          headerTintColor: 'white',
-        }}
-      />
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
-      >
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.formContainer}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Event Title*</Text>
-              <TextInput
-                style={styles.input}
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Enter event title"
-                placeholderTextColor="#666"
-              />
-            </View>
+    <>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        
+        {/* Custom Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#ffffff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Edit Event</Text>
+          <View style={styles.headerPlaceholder} />
+        </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date*</Text>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={styles.dateText}>{formatDate(date)}</Text>
-                <Ionicons name="calendar-outline" size={20} color="#888" />
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <ScrollView 
+            ref={scrollViewRef}
+            style={styles.scrollView} 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.formContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Event Title*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Enter event title"
+                  placeholderTextColor="#666"
+                />
+              </View>
 
-            {Platform.OS === 'ios' && (
-              <Modal
-                transparent={true}
-                visible={showDatePicker}
-                animationType="slide"
-                onRequestClose={() => setShowDatePicker(false)}
-              >
-                <View style={styles.modalOverlay}>
-                  <View style={styles.datePickerModal}>
-                    <View style={styles.datePickerHeader}>
-                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                        <Text style={styles.datePickerCancel}>Cancel</Text>
-                      </TouchableOpacity>
-                      <Text style={styles.datePickerTitle}>Select Date</Text>
-                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                        <Text style={styles.datePickerDone}>Done</Text>
-                      </TouchableOpacity>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Date*</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={styles.dateText}>{formatDate(date)}</Text>
+                  <Ionicons name="calendar-outline" size={20} color="#888" />
+                </TouchableOpacity>
+              </View>
+
+              {/* iOS Modal Date Picker */}
+              {Platform.OS === 'ios' && (
+                <Modal
+                  transparent={true}
+                  visible={showDatePicker}
+                  animationType="slide"
+                  onRequestClose={() => setShowDatePicker(false)}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.datePickerModal}>
+                      <View style={styles.datePickerHeader}>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.datePickerCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.datePickerTitle}>Select Date</Text>
+                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                          <Text style={styles.datePickerDone}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        testID="dateTimePicker"
+                        value={date}
+                        mode="date"
+                        display="spinner"
+                        onChange={onDateChange}
+                        minimumDate={new Date()}
+                        style={styles.iosDatePicker}
+                      />
                     </View>
-                    <DateTimePicker
-                      testID="dateTimePicker"
-                      value={date}
-                      mode="date"
-                      display="spinner"
-                      onChange={onDateChange}
-                      minimumDate={new Date()}
-                      style={styles.iosDatePicker}
-                    />
                   </View>
+                </Modal>
+              )}
+
+              {/* Android Date Picker */}
+              {Platform.OS === 'android' && showDatePicker && (
+                <DateTimePicker
+                  testID="dateTimePicker"
+                  value={date}
+                  mode="date"
+                  is24Hour={true}
+                  display="default"
+                  onChange={onDateChange}
+                  minimumDate={new Date()}
+                />
+              )}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Time*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="e.g. 8:00 PM"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Location*</Text>
+                <TextInput
+                  style={styles.input}
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Enter location"
+                  placeholderTextColor="#666"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Category*</Text>
+                <View style={styles.categoryContainer}>
+                  {CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryButton,
+                        category === cat.id && styles.categoryButtonActive
+                      ]}
+                      onPress={() => setCategory(cat.id)}
+                    >
+                      <Ionicons
+                        name={cat.icon as any}
+                        size={20}
+                        color={category === cat.id ? 'white' : '#888'}
+                      />
+                      <Text
+                        style={[
+                          styles.categoryText,
+                          category === cat.id && styles.categoryTextActive
+                        ]}
+                      >
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </Modal>
-            )}
+              </View>
 
-            {Platform.OS === 'android' && showDatePicker && (
-              <DateTimePicker
-                testID="dateTimePicker"
-                value={date}
-                mode="date"
-                is24Hour={true}
-                display="default"
-                onChange={onDateChange}
-                minimumDate={new Date()}
-              />
-            )}
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Time*</Text>
-              <TextInput
-                style={styles.input}
-                value={time}
-                onChangeText={setTime}
-                placeholder="e.g. 8:00 PM"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Location*</Text>
-              <TextInput
-                style={styles.input}
-                value={location}
-                onChangeText={setLocation}
-                placeholder="Enter location"
-                placeholderTextColor="#666"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Category*</Text>
-              <View style={styles.categoryContainer}>
-                {CATEGORIES.map((cat) => (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Visibility*</Text>
+                <View style={styles.visibilityContainer}>
                   <TouchableOpacity
-                    key={cat.id}
                     style={[
-                      styles.categoryButton,
-                      category === cat.id && styles.categoryButtonActive
+                      styles.visibilityButton,
+                      visibility === 'public' && styles.visibilityButtonActive
                     ]}
-                    onPress={() => setCategory(cat.id)}
+                    onPress={() => setVisibility('public')}
                   >
                     <Ionicons
-                      name={cat.icon as any}
-                      size={20}
-                      color={category === cat.id ? 'white' : '#888'}
+                      name="globe-outline"
+                      size={18}
+                      color={visibility === 'public' ? 'white' : '#888'}
                     />
                     <Text
                       style={[
-                        styles.categoryText,
-                        category === cat.id && styles.categoryTextActive
+                        styles.visibilityText,
+                        visibility === 'public' && styles.visibilityTextActive
                       ]}
                     >
-                      {cat.label}
+                      Public
                     </Text>
                   </TouchableOpacity>
-                ))}
+                  <TouchableOpacity
+                    style={[
+                      styles.visibilityButton,
+                      visibility === 'friends_only' && styles.visibilityButtonActive
+                    ]}
+                    onPress={() => setVisibility('friends_only')}
+                  >
+                    <Ionicons
+                      name="people-outline"
+                      size={18}
+                      color={visibility === 'friends_only' ? 'white' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.visibilityText,
+                        visibility === 'friends_only' && styles.visibilityTextActive
+                      ]}
+                    >
+                      Friends Only
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.visibilityButton,
+                      visibility === 'private' && styles.visibilityButtonActive
+                    ]}
+                    onPress={() => setVisibility('private')}
+                  >
+                    <Ionicons
+                      name="eye-off-outline"
+                      size={18}
+                      color={visibility === 'private' ? 'white' : '#888'}
+                    />
+                    <Text
+                      style={[
+                        styles.visibilityText,
+                        visibility === 'private' && styles.visibilityTextActive
+                      ]}
+                    >
+                      Private
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Visibility*</Text>
-              <View style={styles.categoryContainer}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Cover Image</Text>
                 <TouchableOpacity
-                  style={[
-                    styles.categoryButton,
-                    visibility === 'public' && styles.categoryButtonActive
-                  ]}
-                  onPress={() => setVisibility('public')}
+                  style={styles.imagePickerContainer}
+                  onPress={pickImage}
+                  disabled={isUploadingImage}
                 >
-                  <Ionicons
-                    name="globe-outline"
-                    size={20}
-                    color={visibility === 'public' ? 'white' : '#888'}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      visibility === 'public' && styles.categoryTextActive
-                    ]}
-                  >
-                    Public
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.categoryButton,
-                    visibility === 'friends_only' && styles.categoryButtonActive
-                  ]}
-                  onPress={() => setVisibility('friends_only')}
-                >
-                  <Ionicons
-                    name="people-outline"
-                    size={20}
-                    color={visibility === 'friends_only' ? 'white' : '#888'}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      visibility === 'friends_only' && styles.categoryTextActive
-                    ]}
-                  >
-                    Friends Only
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.categoryButton,
-                    visibility === 'private' && styles.categoryButtonActive
-                  ]}
-                  onPress={() => setVisibility('private')}
-                >
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={20}
-                    color={visibility === 'private' ? 'white' : '#888'}
-                  />
-                  <Text
-                    style={[
-                      styles.categoryText,
-                      visibility === 'private' && styles.categoryTextActive
-                    ]}
-                  >
-                    Private
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Cover Image</Text>
-              <TouchableOpacity
-                style={styles.imagePickerContainer}
-                onPress={pickImage}
-                disabled={isUploadingImage}
-              >
-                {selectedImage ? (
-                  <View style={styles.imagePreviewContainer}>
-                    <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-                    <View style={styles.imageOverlay}>
-                      {isUploadingImage ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Ionicons name="camera" size={24} color="white" />
-                      )}
-                      <Text style={styles.imageOverlayText}>
-                        {isUploadingImage ? 'Uploading...' : 'Tap to change'}
+                  {selectedImage ? (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                      <View style={styles.imageOverlay}>
+                        {isUploadingImage ? (
+                          <ActivityIndicator size="small" color="white" />
+                        ) : (
+                          <Ionicons name="camera" size={24} color="white" />
+                        )}
+                        <Text style={styles.imageOverlayText}>
+                          {isUploadingImage ? 'Uploading...' : 'Tap to change'}
+                        </Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Ionicons name="camera-outline" size={48} color="#666" />
+                      <Text style={styles.imagePlaceholderText}>
+                        {isUploadingImage ? 'Uploading...' : 'Tap to add cover image'}
+                      </Text>
+                      <Text style={styles.imagePlaceholderSubtext}>
+                        Or leave blank for auto-generated image
                       </Text>
                     </View>
-                  </View>
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <Ionicons name="camera-outline" size={48} color="#666" />
-                    <Text style={styles.imagePlaceholderText}>
-                      {isUploadingImage ? 'Uploading...' : 'Tap to add cover image'}
-                    </Text>
-                  </View>
-                )}
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Description*</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Enter event description"
+                  placeholderTextColor="#666"
+                  multiline
+                  numberOfLines={4}
+                  onFocus={() => {
+                    // Scroll to bottom when description field is focused
+                    setTimeout(() => {
+                      scrollViewRef.current?.scrollToEnd({ animated: true });
+                    }, 100);
+                  }}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={handleUpdateEvent}
+                disabled={isSubmitting}
+              >
+                <LinearGradient
+                  colors={['#FF006E', '#8338EC']}
+                  style={styles.createButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <Text style={styles.createButtonText}>Update Event</Text>
+                    </>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
             </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description*</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Enter event description"
-                placeholderTextColor="#666"
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.button}
-              onPress={handleUpdateEvent}
-              disabled={isSubmitting}
-            >
-              <LinearGradient
-                colors={['#FF006E', '#8338EC']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <>
-                    <Text style={styles.buttonText}>Update Event</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#000000',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  headerPlaceholder: {
+    width: 32, // Same width as back button for centering
   },
   loadingContainer: {
     flex: 1,
@@ -544,90 +596,183 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 60, // Reduced padding
   },
   formContainer: {
     padding: 20,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   label: {
-    color: 'white',
+    color: '#ffffff',
     fontSize: 16,
-    marginBottom: 8,
     fontWeight: '600',
+    marginBottom: 12,
   },
   input: {
     backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-    padding: 12,
-    color: 'white',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    padding: 16,
+    color: '#ffffff',
     fontSize: 16,
   },
   textArea: {
-    height: 120,
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    padding: 16,
+    color: '#ffffff',
+    fontSize: 16,
+    minHeight: 100,
     textAlignVertical: 'top',
   },
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
+    gap: 12,
   },
   categoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-    padding: 12,
-    marginRight: 10,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
   },
   categoryButtonActive: {
     backgroundColor: '#FF006E',
+    borderColor: '#FF006E',
   },
   categoryText: {
     color: '#888',
-    marginLeft: 8,
     fontSize: 14,
+    fontWeight: '500',
   },
   categoryTextActive: {
+    color: '#ffffff',
+  },
+  visibilityContainer: {
+    gap: 12,
+  },
+  visibilityButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  visibilityButtonActive: {
+    backgroundColor: '#FF006E',
+    borderColor: '#FF006E',
+  },
+  visibilityText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  visibilityTextActive: {
+    color: '#ffffff',
+  },
+  imagePickerContainer: {
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 120,
+  },
+  imagePreviewContainer: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    paddingVertical: 8,
+  },
+  imageOverlayText: {
     color: 'white',
+    fontSize: 12,
     fontWeight: '500',
   },
-  button: {
-    height: 56,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginTop: 20,
-  },
-  buttonGradient: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
+  imagePlaceholder: {
     alignItems: 'center',
+    paddingVertical: 20,
   },
-  buttonIcon: {
-    marginRight: 8,
+  imagePlaceholderText: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 10,
   },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  imagePlaceholderSubtext: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  createButton: {
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 25,
+    overflow: 'hidden',
+  },
+  createButtonGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  createButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  createButtonDisabled: {
+    backgroundColor: '#333',
+  },
+  createButtonTextDisabled: {
+    color: '#666',
   },
   dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   dateText: {
-    color: 'white',
+    color: '#ffffff',
     fontSize: 16,
-    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
@@ -672,51 +817,7 @@ const styles = StyleSheet.create({
     padding: 10,
     color: 'white',
   },
-  imagePickerContainer: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 8,
-    overflow: 'hidden',
-    aspectRatio: 16 / 9,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    minHeight: 200,
-  },
-  imagePreviewContainer: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePreview: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 8,
-    resizeMode: 'cover',
-  },
-  imageOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 8,
-    paddingVertical: 8,
-  },
-  imageOverlayText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  imagePlaceholder: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  imagePlaceholderText: {
-    color: '#666',
-    fontSize: 14,
-    marginTop: 10,
+  buttonIcon: {
+    marginRight: 8,
   },
 }); 

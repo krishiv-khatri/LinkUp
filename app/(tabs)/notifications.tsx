@@ -23,8 +23,9 @@ import { eventService } from '../../services/eventService';
 import {
   acceptFriendRequest,
   declineFriendRequest,
-  getIncomingFriendRequests
+  getIncomingFriendRequests,
 } from '../../services/friendService';
+import { notificationService } from '../../services/notificationService';
 
 interface NotificationItem {
   id: string;
@@ -705,7 +706,7 @@ export default function NotificationsScreen() {
         {(friendRequests.length > 0 || eventInvitations.length > 0) && (
           <View style={styles.badgeContainer}>
             <Text style={styles.badgeText}>
-              {friendRequests.length + eventInvitations.length}
+              {friendRequests.length + eventInvitations.length} pending
             </Text>
           </View>
         )}
@@ -725,7 +726,17 @@ export default function NotificationsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        bounces={true}
+        alwaysBounceVertical={true}
+        overScrollMode="always"
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled={false}
+      >
         {/* Friend Requests Section */}
         {friendRequests.length > 0 && (
           <View style={styles.section}>
@@ -744,30 +755,44 @@ export default function NotificationsScreen() {
 
         {/* Existing notifications section */}
         {loading ? (
-            <View style={styles.spinnerContainer}>
-              <Text style={styles.loadingText}>Loading...</Text>
-            </View>
-          ) : (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
-              {filteredNotifications.length === 0 && friendRequests.length === 0 && eventInvitations.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="notifications-outline" size={80} color="#333" />
-                  <Text style={styles.emptyTitle}>No notifications</Text>
-                  <Text style={styles.emptySubtitle}>You're all caught up!</Text>
-                </View>
-              ) : filteredNotifications.length === 0 ? null : (
-                <View>
-                  <Text style={styles.sectionTitle}>Activity</Text>
-                  {filteredNotifications.map(n => (
+          <View style={styles.spinnerContainer}>
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        ) : (
+          <>
+            {filteredNotifications.length === 0 && friendRequests.length === 0 && eventInvitations.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="notifications-outline" size={80} color="#333" />
+                <Text style={styles.emptyTitle}>No notifications</Text>
+                <Text style={styles.emptySubtitle}>You're all caught up!</Text>
+              </View>
+            ) : filteredNotifications.length === 0 ? null : (
+              <View>
+                {filteredNotifications.map(n => {
+                  // Check if this is an event update notification that needs special handling
+                  if (n.data?.type === 'event_update_attendance') {
+                    return renderEventUpdateNotification(n);
+                  }
+                  
+                  // Regular notification rendering
+                  return (
                     <View key={n.id} style={[styles.notificationCard, n.read ? styles.read : styles.unread]}> 
                       <View style={styles.notificationInfo}>
                         {n.avatar_url ? (
                           <Image source={{ uri: n.avatar_url }} style={styles.avatar} />
                         ) : (
                           <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarText}>
-                              {n.title.slice(0, 1).toUpperCase()}
-                            </Text>
+                            {n.title === 'Event Updated' ? (
+                              <Ionicons name="time-outline" size={24} color="#FF6B00" />
+                            ) : n.title === 'Event Cancelled' ? (
+                              <Ionicons name="close-circle-outline" size={24} color="#FF3B30" />
+                            ) : n.title === 'Event Invitation' ? (
+                              <Ionicons name="mail-outline" size={24} color="#007AFF" />
+                            ) : (
+                              <Text style={styles.avatarText}>
+                                {n.title.slice(0, 1).toUpperCase()}
+                              </Text>
+                            )}
                           </View>
                         )}
                         <View style={styles.textInfo}>
@@ -777,11 +802,15 @@ export default function NotificationsScreen() {
                         </View>
                       </View>
                     </View>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-          )}
+                  );
+                })}
+              </View>
+            )}
+          </>
+        )}
+        
+        {/* Add bottom padding to ensure proper scrolling */}
+        <View style={{ height: 100 }} />
         </ScrollView>
 
       {/* Modals */}
@@ -804,7 +833,7 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#0A0A0A',
   },
   safeArea: {
     flex: 1,
@@ -813,20 +842,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: '#000000',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: 20,
   },
   backButton: {
     padding: 4,
     marginRight: 16,
   },
   headerTitle: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '700',
-    flex: 1,
+    fontSize: 32,
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+    color: 'white',
+    fontFamily: 'Georgia',
+    letterSpacing: -0.5,
+    marginBottom: 0,
   },
   badgeContainer: {
     backgroundColor: '#FF3B30',
@@ -869,6 +900,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 0,
   },
   spinnerContainer: {
     marginTop: 50,

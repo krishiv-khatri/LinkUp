@@ -10,18 +10,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    Linking,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Linking,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -41,6 +41,9 @@ interface Event {
   attendingCount: number;
   attendingFriends: string[];
   creator_id?: string;
+  creator_name?: string;
+  creator_avatar?: string;
+  visibility?: 'public' | 'friends_only' | 'private';
 }
 
 interface SocialPlatform {
@@ -234,6 +237,8 @@ export default function ProfileScreen() {
             try {
               await signOut();
               toast.success('You\'ve been signed out successfully');
+              // Navigate to onboarding screen after successful sign out
+              router.replace('/(auth)/onboarding');
             } catch (error) {
               console.error('Sign out error:', error);
               toast.error('Something went wrong while signing out. Please try again.');
@@ -399,6 +404,20 @@ export default function ProfileScreen() {
                 source={{ uri: getAvatarUrl() }}
                 style={styles.avatar}
               />
+              
+              {/* Social Icons under profile picture */}
+              {socialHandles.length > 0 && (
+                <View style={styles.profileSocialIcons}>
+                  {socialHandles.map((social, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => handleSocialPress(social.platform, social.handle)}
+                    >
+                      <Ionicons name={social.icon} size={22} color={social.color} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
             
             <Text style={styles.profileName}>{getDisplayName()}</Text>
@@ -436,135 +455,139 @@ export default function ProfileScreen() {
             </View>
           </Animated.View>
 
-          {/* Social Handles Section */}
-          {socialHandles.length > 0 && (
-            <Animated.View style={[styles.socialsSection, { opacity: fadeAnim }]}>
-              <Text style={styles.sectionTitle}>Socials</Text>
-              
-              <View style={styles.socialsContainer}>
-                {socialHandles.map((social, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.socialItem}
-                    onPress={() => handleSocialPress(social.platform, social.handle)}
-                  >
-                    <View style={styles.socialInfo}>
-                      <View style={[styles.socialIcon, { backgroundColor: social.color }]}>
-                        <Ionicons name={social.icon} size={20} color="white" />
-                      </View>
-                      <View style={styles.socialTextContainer}>
-                        <Text style={styles.socialPlatformName}>{social.name}</Text>
-                        <Text style={styles.socialPlatformHandle}>@{social.handle}</Text>
-                      </View>
-                    </View>
-                    <Ionicons name="open-outline" size={18} color="#666" />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </Animated.View>
-          )}
-
           {/* Your Plans Section */}
           <Animated.View style={[styles.eventsSection, { opacity: fadeAnim }]}>
-            <Text style={styles.sectionTitle}>Your Plans</Text>
-            
-            <View style={styles.eventsContainer}>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Your Plans:</Text>
+            <View style={styles.eventsScrollContainer}>
               {loading ? (
                 <Text style={styles.loadingText}>Loading your plans...</Text>
               ) : rsvpEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No upcoming plans. Start exploring events!</Text>
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No upcoming plans. Start exploring events!</Text>
+                </View>
               ) : (
-                rsvpEvents.map((event, index) => (
-                  <TouchableOpacity
-                    key={event.id}
-                    style={styles.eventCard}
-                    onPress={() => handleEventPress(event)}
-                  >
-                    <Image 
-                      source={{ 
-                        uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
-                      }} 
-                      style={styles.eventImage}
-                    />
-                    
-                    <View style={styles.eventInfo}>
-                      <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                      <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
-                        {formatEventTime(event)} • {event.location}
-                      </Text>
-                      <View style={styles.eventMeta}>
-                        <AttendeesList 
-                          attendees={event.attendingFriends.map((avatar, idx) => ({
-                            id: `${event.id}-${idx}`,
-                            user_id: `user-${idx}`,
-                            avatar_url: avatar,
-                            name: 'Guest'
-                          }))}
-                          totalCount={event.attendingCount}
-                          maxVisible={3}
-                        />
+                <ScrollView
+                  style={styles.eventsScrollView}
+                  contentContainerStyle={styles.eventsScrollContent}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEnabled={true}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {rsvpEvents.map((event, index) => (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={styles.eventCard}
+                      onPress={() => handleEventPress(event)}
+                    >
+                      <Image 
+                        source={{ 
+                          uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
+                        }} 
+                        style={styles.eventImage}
+                      />
+                      
+                      <View style={styles.eventInfo}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                        <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
+                          {formatEventTime(event)} • {event.location}
+                        </Text>
+                        <View style={styles.eventMeta}>
+                          <AttendeesList 
+                            attendees={event.attendingFriends.map((avatar, idx) => ({
+                              id: `${event.id}-${idx}`,
+                              user_id: `user-${idx}`,
+                              avatar_url: avatar,
+                              name: 'Guest'
+                            }))}
+                            totalCount={event.attendingCount}
+                            maxVisible={3}
+                          />
+                        </View>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                ))
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               )}
+              <LinearGradient
+                colors={['rgba(10, 10, 10, 0)', '#0A0A0A']}
+                style={styles.fadeGradient}
+                pointerEvents="none"
+              />
             </View>
           </Animated.View>
 
           {/* Your Events Section */}
           <Animated.View style={[styles.eventsSection, { opacity: fadeAnim }]}>
-            <Text style={styles.sectionTitle}>Your Events</Text>
-            
-            <View style={styles.eventsContainer}>
+            <Text style={styles.sectionTitle}>Your Events:</Text>
+            <View style={styles.eventsScrollContainer}>
               {loading ? (
                 <Text style={styles.loadingText}>Loading your events...</Text>
               ) : createdEvents.length === 0 ? (
-                <Text style={styles.emptyText}>No events created yet. Create your first event!</Text>
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No events created yet. Create your first event!</Text>
+                </View>
               ) : (
-                createdEvents.map((event, index) => (
-                  <TouchableOpacity
-                    key={event.id}
-                    style={styles.eventCard}
-                    onPress={() => handleEventPress(event)}
-                  >
-                    <Image 
-                      source={{ 
-                        uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
-                      }} 
-                      style={styles.eventImage}
-                    />
-                    
-                    <View style={styles.eventInfo}>
-                      <View style={styles.eventHeader}>
-                        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-                        <View style={styles.eventMenuContainer}>
-                          <ThreeDotMenu
-                            onEdit={() => handleEditEvent(event)}
-                            onDelete={() => handleDeleteEvent(event.id)}
+                <ScrollView
+                  style={styles.eventsScrollView}
+                  contentContainerStyle={styles.eventsScrollContent}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="handled"
+                  scrollEnabled={true}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {createdEvents.map((event, index) => (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={styles.eventCard}
+                      onPress={() => handleEventPress(event)}
+                    >
+                      <Image 
+                        source={{ 
+                          uri: event.cover_image || `https://api.a0.dev/assets/image?text=${encodeURIComponent(event.title)}&aspect=16:9&seed=${event.id}`
+                        }} 
+                        style={styles.eventImage}
+                      />
+                      
+                      <View style={styles.eventInfo}>
+                        <View style={styles.eventHeader}>
+                          <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
+                          <View style={styles.eventMenuContainer}>
+                            <ThreeDotMenu
+                              onEdit={() => handleEditEvent(event)}
+                              onDelete={() => handleDeleteEvent(event.id)}
+                            />
+                          </View>
+                        </View>
+                        
+                        <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
+                          {formatEventTime(event)} • {event.location}
+                        </Text>
+                        
+                        <View style={styles.eventMeta}>
+                          <AttendeesList 
+                            attendees={event.attendingFriends.map((avatar, idx) => (
+                              {
+                                id: `${event.id}-${idx}`,
+                                user_id: `user-${idx}`,
+                                avatar_url: avatar,
+                                name: 'Guest'
+                              }
+                            ))}
+                            totalCount={event.attendingCount}
+                            maxVisible={3}
                           />
                         </View>
                       </View>
-                      
-                      <Text style={styles.eventDetails} numberOfLines={1} ellipsizeMode="tail">
-                        {formatEventTime(event)} • {event.location}
-                      </Text>
-                      
-                      <View style={styles.eventMeta}>
-                        <AttendeesList 
-                          attendees={event.attendingFriends.map((avatar, idx) => ({
-                            id: `${event.id}-${idx}`,
-                            user_id: `user-${idx}`,
-                            avatar_url: avatar,
-                            name: 'Guest'
-                          }))}
-                          totalCount={event.attendingCount}
-                          maxVisible={3}
-                        />
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               )}
+              <LinearGradient
+                colors={['rgba(10, 10, 10, 0)', '#0A0A0A']}
+                style={styles.fadeGradient}
+                pointerEvents="none"
+              />
             </View>
           </Animated.View>
 
@@ -677,8 +700,11 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
   avatarContainer: {
-    position: 'relative',
+    position: 'absolute',
     marginBottom: 20,
+    alignSelf: 'flex-start',
+    marginLeft: 30,
+    marginTop: 30,
   },
   avatarRing: {
     position: 'absolute',
@@ -702,17 +728,32 @@ const styles = StyleSheet.create({
     borderColor: '#0A0A0A',
     zIndex: 2,
   },
+  profileSocialIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 16,
+    justifyContent: 'center',
+    width: '100%',
+    marginLeft: -35,
+    marginBottom: 30,
+  },
   profileName: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+    marginLeft: 140,
+    marginTop: -10,
   },
   socialHandles: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 10,
+    marginLeft: 120,
+    textAlign: 'center',
   },
   socialHandle: {
     color: '#888',
@@ -726,6 +767,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginLeft: 120,
   },
   editButton: {
     borderRadius: 25,
@@ -734,8 +776,8 @@ const styles = StyleSheet.create({
   editButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
     gap: 6,
   },
   editButtonText: {
@@ -744,63 +786,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   shareButton: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     borderRadius: 22,
     backgroundColor: '#1A1A1A',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  socialsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 30,
-  },
-  socialsContainer: {
-    gap: 12,
-  },
-  socialItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-  },
-  socialInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  socialIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  socialTextContainer: {
-    flex: 1,
-  },
-  socialPlatformName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  socialPlatformHandle: {
-    fontSize: 14,
-    color: '#888',
-  },
   eventsSection: {
     paddingHorizontal: 20,
     marginBottom: 30,
+    backgroundColor: '#0A0A0A',
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#FFF',
     marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  eventsScrollContainer: {
+    maxHeight: 240,
+    width: '100%',
+    backgroundColor: '#0A0A0A',
+    position: 'relative',
+  },
+  eventsScrollView: {
+    width: '100%',
+    backgroundColor: '#0A0A0A',
+  },
+  eventsScrollContent: {
+    paddingBottom: 10,
+    backgroundColor: '#0A0A0A',
   },
   eventsContainer: {
     gap: 12,
@@ -809,13 +826,19 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 14,
     textAlign: 'center',
-    paddingVertical: 20,
+    paddingVertical: 10,
+  },
+  emptyContainer: {
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0A0A0A',
   },
   emptyText: {
     color: '#888',
     fontSize: 14,
     textAlign: 'center',
-    paddingVertical: 20,
+    paddingVertical: 10,
   },
   eventCard: {
     borderRadius: 16,
@@ -825,6 +848,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 120,
     padding: 12,
+    marginBottom: 10,
   },
   eventImage: {
     width: 100,
@@ -897,5 +921,12 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#FF006E',
+  },
+  fadeGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
   },
 }); 

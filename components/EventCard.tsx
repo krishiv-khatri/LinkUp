@@ -1,4 +1,4 @@
-import AttendeesList from '@/components/AttendeesList';
+import FriendProfileModal from '@/components/FriendProfileModal';
 import ProgressiveImage from '@/components/ProgressiveImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
@@ -7,18 +7,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { NativeViewGestureHandler } from 'react-native-gesture-handler';
+import Modal from 'react-native-modal';
 import { toast } from 'sonner-native';
 
 const { width } = Dimensions.get('window');
@@ -36,6 +37,8 @@ interface Event {
   coverImage: string;
   description: string;
   creator_id?: string; // Add creator_id field
+  creator_name?: string; // Add creator name field
+  creator_avatar?: string; // Add creator avatar field
   visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
 }
 
@@ -75,6 +78,28 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
+// Custom Calendar Component
+const EventCalendar = ({ date }: { date: string }) => {
+  const eventDate = new Date(date);
+  const month = eventDate.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+  const day = eventDate.getDate();
+  const dayOfWeek = eventDate.toLocaleDateString('en-US', { weekday: 'long' });
+  
+  return (
+    <View style={styles.calendarContainer}>
+      {/* Red header section */}
+      <View style={styles.calendarHeader}>
+        <Text style={styles.calendarMonth}>{month}</Text>
+      </View>
+      {/* White body section */}
+      <View style={styles.calendarBody}>
+        <Text style={styles.calendarDay}>{day}</Text>
+        <Text style={styles.calendarDayOfWeek}>{dayOfWeek}</Text>
+      </View>
+    </View>
+  );
+};
+
 export default function EventCard({ event, index, isRSVPed: initialRSVPed }: EventCardProps) {
   const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -85,6 +110,11 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
   const [isModalImageLoaded, setIsModalImageLoaded] = useState(false);
   const [modalImageLoadError, setModalImageLoadError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState<any>(null);
+  const [showFriendModal, setShowFriendModal] = useState(false);
+  const [modalSwipeEnabled, setModalSwipeEnabled] = useState(true);
+  
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const rsvpAnim = useRef(new Animated.Value(0)).current;
@@ -386,41 +416,44 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
       </Animated.View>
 
       <Modal
-        visible={isExpanded}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setIsExpanded(false)}
+        isVisible={isExpanded}
+        onBackdropPress={() => setIsExpanded(false)}
+        onBackButtonPress={() => setIsExpanded(false)}
+        style={styles.modalContainer}
+        backdropOpacity={0.4}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+        useNativeDriver={false}
+        hideModalContentWhileAnimating={false}
+        swipeDirection={modalSwipeEnabled ? ['down'] : []}
+        onSwipeComplete={() => setIsExpanded(false)}
+        propagateSwipe
       >
-        <View style={styles.modalContainer}>
-          {/* Backdrop blur effect */}
-          <View style={styles.modalBackdrop} />
-          
-          <View style={styles.modalHeader}>
-            <TouchableOpacity 
-              onPress={() => setIsExpanded(false)}
-              style={styles.closeButton}
-            >
-              <Ionicons name="close" size={20} color="#ffffff" />
-            </TouchableOpacity>
+                                    <View style={styles.modalInnerContainer}>
+                    {/* Swipe indicator */}
+                    <View style={styles.swipeIndicator} />
+                    
+                    <View style={styles.modalHeader}>
+            <View style={styles.modalTitleSection}>
+              <View style={styles.titleRow}>
+                <Text style={styles.modalTitle}>{event.title}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.headerButtons}>
+              <TouchableOpacity style={styles.shareButtonTop}>
+                <Ionicons name="share-outline" size={20} color="#ffffff" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setIsExpanded(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={20} color="#ffffff" />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Image loading placeholder for modal */}
-          {!isModalImageLoaded && !modalImageLoadError && (
-            <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <ActivityIndicator size="large" color="#888" />
-              <Text style={styles.loadingText}>Loading...</Text>
-            </View>
-          )}
-          
-          {/* Error placeholder for modal */}
-          {modalImageLoadError && (
-            <View style={[styles.modalImage, styles.imagePlaceholder]}>
-              <Ionicons name="image-outline" size={32} color="#666" />
-              <Text style={styles.errorText}>Image unavailable</Text>
-            </View>
-          )}
-
-          {/* Main modal image - always render for better caching */}
+          {/* Progressive modal image behind the title */}
           <Image 
             source={{ uri: event.coverImage }} 
             style={[
@@ -445,69 +478,135 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
             }}
           />
           
+          {/* Top gradient fade */}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
-            style={styles.modalOverlay}
+            colors={['rgba(0,0,0,1)', 'transparent']}
+            style={styles.modalTopGradient}
+          />
+          
+          {/* Bottom gradient fade */}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,1)']}
+            style={styles.modalBottomGradient}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,1)']}
+            style={styles.modalBottomGradientx}
+          />
+          <LinearGradient
+            colors={['rgba(0,0,0,1)', 'transparent']}
+            style={styles.modalBottomGradienty}
           />
 
-          <ScrollView 
-            style={styles.modalContent} 
-            contentContainerStyle={styles.modalContentContainer}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.modalTitleSection}>
-              <Text style={styles.modalTitle}>{event.title}</Text>
-              <View style={styles.categoryIndicator}>
+          <NativeViewGestureHandler>
+            <ScrollView 
+              style={styles.modalContent} 
+              contentContainerStyle={styles.modalContentContainer}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              scrollEnabled={true}
+              onTouchStart={() => setModalSwipeEnabled(false)}
+              onTouchEnd={() => setModalSwipeEnabled(true)}
+              onScrollEndDrag={() => setModalSwipeEnabled(true)}
+            >
+            {/* Category and Privacy indicators below the image */}
+            <View style={styles.modalCategorySection}>
+              <View style={styles.modalCategoryIndicator}>
                 <Ionicons 
                   name={getCategoryIcon(event.category)} 
-                  size={14} 
-                  color="#888" 
+                  size={12} 
+                  color="#FF006E" 
                 />
-                <Text style={styles.categoryText}>{event.category}</Text>
+                <Text style={styles.modalCategoryText}>{event.category}</Text>
+              </View>
+              {event.visibility && event.visibility !== 'public' && (
+                <View style={styles.modalVisibilityIndicator}>
+                  <Ionicons 
+                    name={event.visibility === 'friends_only' ? 'people-outline' : 'lock-closed-outline'} 
+                    size={12} 
+                    color="#FF006E" 
+                  />
+                  <Text style={styles.modalVisibilityText}>
+                    {event.visibility === 'friends_only' ? 'Friends Only' : 'Private'}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Hosted By section - aligned to the right */}
+              <View style={styles.hostedByContainer}>
+                <Text style={styles.hostedByText}>Hosted by:</Text>
+                <Image 
+                  source={{ uri: event.creator_avatar || 'https://api.a0.dev/assets/image?text=H&aspect=1:1&seed=host' }} 
+                  style={styles.hostAvatar}
+                />
+                <Text style={styles.hostName}>{event.creator_name || 'Unknown Host'}</Text>
               </View>
             </View>
-            
+
             <Text style={styles.modalDescription}>{event.description}</Text>
             
-            {/* Who's Going Section */}
+            {/* Who's Going Section with horizontal scrolling */}
             <View style={styles.attendeesSection}>
-              <View style={styles.attendeesTitleRow}>
-                <Text style={styles.attendeesTitle}>Who's Going</Text>
-                {event.attendingCount > 0 && (
-                  <View style={styles.attendeesBadge}>
-                    <Text style={styles.attendeesBadgeText}>{event.attendingCount}</Text>
-                  </View>
-                )}
-              </View>
+              <Text style={styles.attendeesTitle}>Who's Going</Text>
               
               {loadingAttendees ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color="#888" />
                 </View>
               ) : (
-                <AttendeesList 
-                  attendees={attendees} 
-                  totalCount={event.attendingCount} 
-                />
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.attendeesScrollContainer}
+                >
+                  {attendees.map((attendee, index) => (
+                    <TouchableOpacity
+                      key={attendee.id}
+                      style={styles.attendeeButton}
+                      onPress={() => {
+                        setSelectedFriend({
+                          id: attendee.user_id,
+                          username: attendee.name,
+                          display_name: attendee.name,
+                          avatar_url: attendee.avatar_url,
+                        });
+                        setShowFriendModal(true);
+                      }}
+                    >
+                      <Image 
+                        source={{ uri: attendee.avatar_url }} 
+                        style={styles.attendeeAvatar}
+                      />
+                      <Text style={styles.attendeeName} numberOfLines={1}>
+                        {attendee.name || 'Guest'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {event.attendingCount > attendees.length && (
+                    <View style={styles.moreAttendeesButton}>
+                      <Text style={styles.moreAttendeesText}>
+                        +{event.attendingCount - attendees.length} more
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
               )}
             </View>
             
             <View style={styles.modalDetails}>
-              <View style={styles.modalDetailItem}>
-                <Ionicons name="calendar-outline" size={16} color="#888" />
-                <Text style={styles.modalDetailText}>{new Date(event.date).toLocaleDateString('en-US', { 
-                  weekday: 'short', 
-                  month: 'short', 
-                  day: 'numeric' 
-                })}</Text>
+              <View style={styles.modalDetailsLeft}>
+                <View style={styles.modalDetailItem}>
+                  <Ionicons name="time-outline" size={20} color="#FF006E" />
+                  <Text style={styles.modalDetailText}>{event.time}</Text>
+                </View>
+                <View style={styles.modalDetailItem}>
+                  <Ionicons name="location-outline" size={20} color="#FF006E" />
+                  <Text style={styles.modalDetailText}>{event.location}</Text>
+                </View>
               </View>
               <View style={styles.modalDetailItem}>
-                <Ionicons name="time-outline" size={16} color="#888" />
-                <Text style={styles.modalDetailText}>{event.time}</Text>
-              </View>
-              <View style={styles.modalDetailItem}>
-                <Ionicons name="location-outline" size={16} color="#888" />
-                <Text style={styles.modalDetailText}>{event.location}</Text>
+                <EventCalendar date={event.date}/>
               </View>
             </View>
 
@@ -570,18 +669,21 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
                   </View>
                 </TouchableOpacity>
               )}
-              
-              <TouchableOpacity style={styles.shareButton}>
-                <Ionicons name="share-outline" size={16} color="#888" />
-                <Text style={styles.shareButtonText}>Share</Text>
-              </TouchableOpacity>
             </View>
             
             {/* Add bottom padding for scroll */}
             <View style={{ height: 40 }} />
-          </ScrollView>
+            </ScrollView>
+          </NativeViewGestureHandler>
         </View>
       </Modal>
+
+      {/* Render FriendProfileModal outside the event modal to avoid z-index conflicts */}
+      <FriendProfileModal
+        visible={showFriendModal}
+        friend={selectedFriend}
+        onClose={() => setShowFriendModal(false)}
+      />
     </>
   );
 }
@@ -597,12 +699,13 @@ const styles = StyleSheet.create({
   },
   glowBorder: {
     position: 'absolute',
-    top: -2,
+    top: 0,
     left: -2,
     right: -2,
     bottom: -2,
     borderRadius: 22,
     zIndex: -1,
+    overflow: 'hidden',
   },
   gradient: {
     flex: 1,
@@ -613,6 +716,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
+    marginTop: 0,
   },
   coverImage: {
     width: '100%',
@@ -720,24 +824,130 @@ const styles = StyleSheet.create({
   },
   // Modal styles
   modalContainer: {
-    flex: 1,
-    backgroundColor: '#000000',
+    margin: 0,
+    padding: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    // Ensure rounded corners are visible
+    borderRadius: 24,
+    overflow: 'hidden',
   },
-  modalBackdrop: {
+
+  modalHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  modalHeader: {
-    position: 'absolute',
-    top: 50,
-    right: 16,
     zIndex: 10,
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  modalTitleSection: {
+    flex: 1,
+    maxWidth: '70%',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 12,
+    letterSpacing: -0.5,
+    flex: 1,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  categoryIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 0, 110, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  visibilityIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 0, 110, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  visibilityText: {
+    color: '#FF006E',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalTopGradient: {
+    position: 'absolute',
+    top: 20,
+    left: 0,
+    right: 0,
+    height: 100,
+    zIndex: 1,
+  },
+  modalBottomGradient: {
+    position: 'absolute',
+    top: 220,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    zIndex: 1,
+  },
+  modalBottomGradientx: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    zIndex: 1,
+  },
+  modalBottomGradienty: {
+    position: 'absolute',
+    top: 320,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+    zIndex: 1,
+  },
+  categoryText: {
+    fontSize: 10,
+    color: '#FF006E',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  headerButtons: {
+    position: 'absolute',
+    top: 20,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backdropFilter: 'blur(10px)',
+  },
+  shareButtonTop: {
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -751,6 +961,16 @@ const styles = StyleSheet.create({
     aspectRatio: 4/3,
     resizeMode: 'cover',
     maxHeight: 350,
+    marginBottom: 5,
+  },
+  modalImageGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 100,
+    zIndex: 1,
+    marginTop: -100, // Position relative to the image
   },
   modalOverlay: {
     position: 'absolute',
@@ -765,75 +985,85 @@ const styles = StyleSheet.create({
   modalContentContainer: {
     padding: 16,
     paddingTop: 24,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
     flexGrow: 1,
   },
-  modalTitleSection: {
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 6,
-    letterSpacing: -0.5,
-  },
-  categoryIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryText: {
-    fontSize: 12,
-    color: '#888',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
   modalDescription: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#cccccc',
-    lineHeight: 22,
-    marginBottom: 20,
+    lineHeight: 24,
+    marginBottom: 24,
     fontWeight: '400',
   },
   modalDetails: {
-    marginBottom: 24,
-    gap: 8,
+    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  modalDetailsLeft: {
+    flex: 1,
+    gap: 16,
   },
   modalDetailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 16,
+    borderRadius: 12,
   },
   modalDetailText: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  attendeesSection: {
-    marginBottom: 24,
-  },
-  attendeesTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  attendeesTitle: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  attendeesSection: {
+    marginBottom: 20,
+  },
+  attendeesTitle: {
+    fontSize: 22,
+    fontWeight: '700',
     color: '#ffffff',
+    marginBottom: 10,
   },
-  attendeesBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 8,
+  attendeesScrollContainer: {
     paddingVertical: 4,
+    gap: 12,
   },
-  attendeesBadgeText: {
-    color: '#888',
+  attendeeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    minWidth: 12,
+  },
+  attendeeAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 20,
+  },
+  attendeeName: {
+    color: '#ffffff',
     fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  moreAttendeesButton: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 120,
+  },
+  moreAttendeesText: {
+    color: '#888',
+    fontSize: 14,
     fontWeight: '500',
   },
   loadingContainer: {
@@ -965,5 +1195,142 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
     fontWeight: '500',
+  },
+  modalCategorySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 12,
+    marginTop: -15,
+    flexWrap: 'wrap',
+  },
+  modalCategoryIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255, 0, 110, 0.2)',
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF006E',
+  },
+  modalVisibilityIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255, 0, 110, 0.2)',
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FF006E',
+  },
+  modalCategoryText: {
+    fontSize: 10,
+    color: '#FF006E',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalVisibilityText: {
+    color: '#FF006E',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  hostedByContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  hostedByText: {
+    color: '#888',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  hostAvatar: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  hostName: {
+    color: '#888',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  swipeIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  modalInnerContainer: {
+    height: '90%',
+    backgroundColor: '#000000',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  // New styles for calendar component
+  calendarContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 20,
+    backgroundColor: '#FF006E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  calendarHeader: {
+    width: '100%',
+    height: '25%',
+    backgroundColor: '#FF006E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  calendarBody: {
+    width: '100%',
+    height: '75%',
+    backgroundColor: '#1A1A1A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  calendarMonth: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  calendarDay: {
+    color: 'white',
+    fontSize: 44,
+    fontWeight: 'bold',
+    marginTop: -10,
+  },
+  calendarDayOfWeek: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 5,
   },
 });
