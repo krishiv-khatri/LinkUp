@@ -127,6 +127,19 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
     }
   }, [visible, event, user, showAttendees]);
 
+  // Debug logging for announcement button visibility
+  useEffect(() => {
+    if (event && user) {
+      console.log('Debug - Event Modal:');
+      console.log('  User ID:', user.id);
+      console.log('  Event Creator ID:', event.creator_id);
+      console.log('  User ID type:', typeof user.id);
+      console.log('  Creator ID type:', typeof event.creator_id);
+      console.log('  Are they equal?', user.id === event.creator_id);
+      console.log('  String comparison:', user.id.toString() === event.creator_id?.toString());
+    }
+  }, [event, user]);
+
   const checkEventAccess = async () => {
     if (!event) return;
     
@@ -460,7 +473,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
             </View>
 
             <View style={styles.actionButtons}>
-              {user && event.creator_id === user.id ? (
+              {user && event.creator_id && event.creator_id.toString() === user.id.toString() ? (
                 <View style={styles.creatorActions}>
                   <TouchableOpacity 
                     style={styles.editButton}
@@ -472,6 +485,19 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
                     <View style={styles.editButtonContent}>
                       <Ionicons name="create-outline" size={16} color="#000000" />
                       <Text style={styles.editButtonText}>Edit</Text>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.announcementButton}
+                    onPress={() => {
+                      onClose();
+                      router.push(`/announcement?eventId=${event.id}`);
+                    }}
+                  >
+                    <View style={styles.announcementButtonContent}>
+                      <Ionicons name="megaphone-outline" size={16} color="#000000" />
+                      <Text style={styles.announcementButtonText}>Announce</Text>
                     </View>
                   </TouchableOpacity>
                   
@@ -857,14 +883,14 @@ const styles = StyleSheet.create({
   creatorActions: {
     flexDirection: 'row',
     flex: 1,
-    gap: 12,
+    gap: 8,
   },
   editButton: {
     flex: 1,
     backgroundColor: '#ffffff',
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
@@ -872,11 +898,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   editButtonText: {
     color: '#000000',
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  announcementButton: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  announcementButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  announcementButtonText: {
+    color: '#000000',
+    fontSize: 14,
     fontWeight: '600',
   },
   deleteButton: {
@@ -884,7 +930,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 59, 48, 0.1)',
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 59, 48, 0.3)',
   },
@@ -896,7 +942,7 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: '#FF3B30',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   calendarContainer: {

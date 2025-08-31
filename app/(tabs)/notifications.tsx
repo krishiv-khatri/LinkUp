@@ -788,6 +788,8 @@ export default function NotificationsScreen() {
                               <Ionicons name="close-circle-outline" size={24} color="#FF3B30" />
                             ) : n.title === 'Event Invitation' ? (
                               <Ionicons name="mail-outline" size={24} color="#007AFF" />
+                            ) : n.title.startsWith('Announcement:') ? (
+                              <Ionicons name="megaphone-outline" size={24} color="#FF006E" />
                             ) : (
                               <Text style={styles.avatarText}>
                                 {n.title.slice(0, 1).toUpperCase()}
@@ -798,6 +800,14 @@ export default function NotificationsScreen() {
                         <View style={styles.textInfo}>
                           <Text style={styles.notificationTitle}>{n.title}</Text>
                           <Text style={styles.notificationBody}>{n.body}</Text>
+                          {n.data?.type === 'event_announcement' && n.data?.image_url && (
+                            <View style={styles.announcementImageContainer}>
+                              <Image 
+                                source={{ uri: n.data.image_url }} 
+                                style={styles.announcementImage} 
+                              />
+                            </View>
+                          )}
                           <Text style={styles.timestamp}>{formatTimeAgo(n.created_at)}</Text>
                         </View>
                       </View>
@@ -1203,5 +1213,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
+  },
+  announcementImageContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  announcementImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: '#333',
   },
 }); 

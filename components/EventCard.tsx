@@ -627,6 +627,19 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
                   </TouchableOpacity>
                   
                   <TouchableOpacity 
+                    style={styles.announcementButton}
+                    onPress={() => {
+                      setIsExpanded(false);
+                      router.push(`/announcement?eventId=${event.id}`);
+                    }}
+                  >
+                    <View style={styles.announcementButtonContent}>
+                      <Ionicons name="megaphone-outline" size={16} color="#000000" />
+                      <Text style={styles.announcementButtonText}>Announce</Text>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
                     style={styles.deleteButton}
                     onPress={handleDeleteEvent}
                     disabled={isDeleting}
@@ -1121,14 +1134,14 @@ const styles = StyleSheet.create({
   creatorActions: {
     flexDirection: 'row',
     flex: 1,
-    gap: 12,
+    gap: 8,
   },
   editButton: {
     flex: 1,
     backgroundColor: '#ffffff',
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
@@ -1136,11 +1149,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   editButtonText: {
     color: '#000000',
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  announcementButton: {
+    flex: 1,
+    backgroundColor: '#b2d8d8',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  announcementButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  announcementButtonText: {
+    color: '#000000',
+    fontSize: 14,
     fontWeight: '600',
   },
   deleteButton: {
@@ -1148,7 +1181,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 59, 48, 0.1)',
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 59, 48, 0.3)',
   },
@@ -1156,11 +1189,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   deleteButtonText: {
     color: '#FF3B30',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   shareButton: {

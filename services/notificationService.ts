@@ -250,5 +250,123 @@ export const notificationService = {
       console.error('Error sending push notification:', error);
       return false;
     }
+  },
+
+  // Send event announcement to all attendees
+  async sendEventAnnouncement(
+    eventId: string, 
+    message: string, 
+    imageUrl: string | null, 
+    eventTitle: string
+  ): Promise<boolean> {
+    try {
+      // Get event creator ID first
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('creator_id')
+        .eq('id', eventId)
+        .single();
+
+      if (eventError) {
+        console.error('Error fetching event creator:', eventError);
+        return false;
+      }
+
+      // Get all attendees for this event, excluding the creator
+      const { data: attendees, error: attendeesError } = await supabase
+        .from('attendees')
+        .select('user_id')
+        .eq('event_id', eventId)
+        .neq('user_id', eventData.creator_id); // Exclude the event creator
+
+      if (attendeesError) {
+        console.error('Error fetching attendees for announcement:', attendeesError);
+        return false;
+      }
+
+      if (!attendees || attendees.length === 0) {
+        console.log('No attendees to notify for announcement');
+        return true; // No attendees to notify
+      }
+
+      // Create notifications for all attendees
+      const notifications = attendees.map(attendee => ({
+        user_id: attendee.user_id,
+        title: `Announcement: ${eventTitle}`,
+        body: message,
+        data: {
+          type: 'event_announcement',
+          event_id: eventId,
+          event_title: eventTitle,
+          image_url: imageUrl
+        },
+        read: false
+      }));
+
+      const { error: notificationError } = await supabase
+        .from('notifications')
+        .insert(notifications);
+
+      if (notificationError) {
+        console.error('Error creating announcement notifications:', notificationError);
+        return false;
+      }
+
+      // Send push notifications to all attendees
+      const pushPromises = attendees.map(async (attendee) => {
+        try {
+          // Get user's push token
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('expo_push_token')
+            .eq('id', attendee.user_id)
+            .single();
+
+          if (!profile?.expo_push_token) {
+            console.log('No push token found for user:', attendee.user_id);
+            return false;
+          }
+
+          // Send push notification
+          const pushMessage = {
+            to: profile.expo_push_token,
+            sound: 'default',
+            title: `Announcement: ${eventTitle}`,
+            body: message,
+            data: {
+              type: 'event_announcement',
+              event_id: eventId,
+              screen: 'notifications'
+            }
+          };
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(pushMessage),
+          });
+
+          return response.ok;
+        } catch (error) {
+          console.error('Error sending push notification to user:', attendee.user_id, error);
+          return false;
+        }
+      });
+
+      // Wait for all push notifications to be sent
+      const pushResults = await Promise.all(pushPromises);
+      const successfulPushes = pushResults.filter(result => result === true).length;
+      
+      console.log(`Sent ${successfulPushes} out of ${attendees.length} push notifications`);
+
+      return true;
+    } catch (error) {
+      console.error('Error sending event announcement:', error);
+      return false;
+    }
   }
 }; 
