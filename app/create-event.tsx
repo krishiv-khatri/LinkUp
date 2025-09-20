@@ -9,18 +9,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
@@ -39,9 +39,11 @@ export default function CreateEventScreen() {
   const { user } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
   const [title, setTitle] = useState('');
-  const [time, setTime] = useState('');
+  const [time, setTime] = useState(new Date());
+  const [timeString, setTimeString] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [location, setLocation] = useState('');
   const [category, setCategory] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -141,7 +143,7 @@ export default function CreateEventScreen() {
   };
 
   const handleCreateEvent = async () => {
-    if (!title || !time || !location || !category || !description || !visibility) {
+    if (!title || !timeString || !location || !category || !description || !visibility) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -164,7 +166,7 @@ export default function CreateEventScreen() {
       // Log the event data being sent for debugging
       const eventData = {
         title,
-        time,
+        time: timeString,
         date: date.toISOString().split('T')[0], // Format as YYYY-MM-DD
         location,
         category,
@@ -243,12 +245,33 @@ export default function CreateEventScreen() {
     }
   };
 
+  const onTimeChange = (event: any, selectedTime: Date | undefined) => {
+    if (Platform.OS === 'android') {
+      // On Android, hide the picker immediately
+      setShowTimePicker(false);
+    }
+    
+    // Update the time if a new time was selected
+    if (selectedTime) {
+      setTime(selectedTime);
+      setTimeString(formatTime(selectedTime));
+    }
+  };
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { 
       weekday: 'long', 
       year: 'numeric', 
       month: 'long', 
       day: 'numeric' 
+    });
+  };
+
+  const formatTime = (time: Date) => {
+    return time.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -347,15 +370,61 @@ export default function CreateEventScreen() {
                 />
               )}
 
+              {/* iOS Modal Time Picker */}
+              {Platform.OS === 'ios' && (
+                <Modal
+                  transparent={true}
+                  visible={showTimePicker}
+                  animationType="slide"
+                  onRequestClose={() => setShowTimePicker(false)}
+                >
+                  <View style={styles.modalOverlay}>
+                    <View style={styles.datePickerModal}>
+                      <View style={styles.datePickerHeader}>
+                        <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                          <Text style={styles.datePickerCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.datePickerTitle}>Select Time</Text>
+                        <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                          <Text style={styles.datePickerDone}>Done</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <DateTimePicker
+                        testID="timeTimePicker"
+                        value={time}
+                        mode="time"
+                        display="spinner"
+                        onChange={onTimeChange}
+                        style={styles.iosDatePicker}
+                      />
+                    </View>
+                  </View>
+                </Modal>
+              )}
+
+              {/* Android Time Picker */}
+              {Platform.OS === 'android' && showTimePicker && (
+                <DateTimePicker
+                  testID="timeTimePicker"
+                  value={time}
+                  mode="time"
+                  is24Hour={false}
+                  display="default"
+                  onChange={onTimeChange}
+                />
+              )}
+
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Time*</Text>
-                <TextInput
-                  style={styles.input}
-                  value={time}
-                  onChangeText={setTime}
-                  placeholder="e.g. 8:00 PM"
-                  placeholderTextColor="#666"
-                />
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {timeString || 'Select time'}
+                  </Text>
+                  <Ionicons name="time-outline" size={20} color="#888" />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.inputGroup}>

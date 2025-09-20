@@ -81,27 +81,39 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-// Custom Calendar Component
-const EventCalendar = ({ date }: { date: string }) => {
-  const eventDate = new Date(date);
-  const month = eventDate.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
-  const day = eventDate.getDate();
-  const dayOfWeek = eventDate.toLocaleDateString('en-US', { weekday: 'long' });
-  
+// Static horizontal event details component
+const HorizontalEventDetails = ({ event }: { event: Event }) => {
+  const eventDetails = [
+    {
+      icon: 'calendar-outline' as const,
+      text: new Date(event.date).toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      })
+    },
+    {
+      icon: 'time-outline' as const,
+      text: event.time
+    },
+    {
+      icon: 'location-outline' as const,
+      text: event.location
+    }
+  ];
+
   return (
-    <View style={styles.calendarContainer}>
-      {/* Red header section */}
-      <View style={styles.calendarHeader}>
-        <Text style={styles.calendarMonth}>{month}</Text>
-      </View>
-      {/* White body section */}
-      <View style={styles.calendarBody}>
-        <Text style={styles.calendarDay}>{day}</Text>
-        <Text style={styles.calendarDayOfWeek}>{dayOfWeek}</Text>
-      </View>
+    <View style={styles.eventDetailsContainer}>
+      {eventDetails.map((detail, index) => (
+        <View key={index} style={styles.eventDetailItem}>
+          <Ionicons name={detail.icon} size={16} color="#FF006E" />
+          <Text style={styles.eventDetailText}>{detail.text}</Text>
+        </View>
+      ))}
     </View>
   );
 };
+
 
 export default function EventModal({ event, visible, onClose, showAttendees = true, onEventDeleted }: EventModalProps) {
   const { user } = useAuth();
@@ -456,21 +468,7 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
               </View>
             )}
             
-            <View style={styles.modalDetails}>
-              <View style={styles.modalDetailsLeft}>
-                <View style={styles.modalDetailItem}>
-                  <Ionicons name="time-outline" size={20} color="#FF006E" />
-                  <Text style={styles.modalDetailText}>{event.time}</Text>
-                </View>
-                <View style={styles.modalDetailItem}>
-                  <Ionicons name="location-outline" size={20} color="#FF006E" />
-                  <Text style={styles.modalDetailText}>{event.location}</Text>
-                </View>
-              </View>
-              <View style={styles.modalDetailItem}>
-                <EventCalendar date={event.date}/>
-              </View>
-            </View>
+            <HorizontalEventDetails event={event} />
 
             <View style={styles.actionButtons}>
               {user && event.creator_id && event.creator_id.toString() === user.id.toString() ? (
@@ -567,7 +565,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   modalInnerContainer: {
-    height: '100%',
+    height: '85%',
     backgroundColor: '#000000',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -816,28 +814,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  modalDetails: {
-    marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  modalDetailsLeft: {
-    flex: 1,
-    gap: 16,
-  },
-  modalDetailItem: {
+  eventDetailsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 16,
-    borderRadius: 12,
+    gap: 12,
+    marginBottom: 20,
+    flexWrap: 'wrap',
   },
-  modalDetailText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
+  eventDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 110, 0.2)',
+  },
+  eventDetailText: {
+    fontSize: 14,
+    color: '#cccccc',
+    fontWeight: '500',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -944,56 +942,6 @@ const styles = StyleSheet.create({
     color: '#FF3B30',
     fontSize: 14,
     fontWeight: '600',
-  },
-  calendarContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 20,
-    backgroundColor: '#FF006E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  calendarHeader: {
-    width: '100%',
-    height: '25%',
-    backgroundColor: '#FF006E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  calendarBody: {
-    width: '100%',
-    height: '75%',
-    backgroundColor: '#1A1A1A',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  calendarMonth: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  calendarDay: {
-    color: 'white',
-    fontSize: 44,
-    fontWeight: 'bold',
-    marginTop: -10,
-  },
-  calendarDayOfWeek: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 5,
   },
   centerContent: {
     justifyContent: 'center',
