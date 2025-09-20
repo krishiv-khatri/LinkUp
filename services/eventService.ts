@@ -16,6 +16,7 @@ export interface Event {
   creator_name?: string; // Add creator name field
   creator_avatar?: string; // Add creator avatar field
   visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
+  shareable_slug?: string;
 }
 
 export interface EventInvitation {
@@ -53,7 +54,8 @@ export const eventService = {
         description,
         created_at,
         creator_id,
-        visibility
+        visibility,
+        shareable_slug
       `)
       .order('event_date', { ascending: true });
     
@@ -463,7 +465,8 @@ export const eventService = {
           description,
           created_at,
           creator_id,
-          visibility
+          visibility,
+          shareable_slug
         `)
         .in('id', eventIds)
         .order('event_date', { ascending: true });

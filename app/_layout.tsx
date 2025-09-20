@@ -1,3 +1,4 @@
+import { useDeepLinking } from '@/hooks/useDeepLinking';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -10,6 +11,21 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { EventsProvider } from '../contexts/EventsContext';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
+
+function AppContent() {
+  // Initialize deep linking
+  useDeepLinking();
+
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="event/[slug]" options={{ headerShown: false }} />
+      <Stack.Screen name="profile/[slug]" options={{ headerShown: false }} />
+      <Stack.Screen name="+not-found" />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -28,11 +44,7 @@ export default function RootLayout() {
         <AuthProvider>
           <EventsProvider>
             <Toaster />
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-              <Stack.Screen name="+not-found" />
-            </Stack>
+            <AppContent />
             <StatusBar style="auto" />
           </EventsProvider>
         </AuthProvider>

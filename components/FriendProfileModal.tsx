@@ -1,3 +1,4 @@
+import { shareService } from '@/services/shareService';
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Animated, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -261,6 +262,14 @@ export default function FriendProfileModal({ visible, onClose, friend }: FriendP
             <Ionicons name="close" size={24} color="#FFF" />
           </TouchableOpacity>
           
+          {/* Share button in top left */}
+          <TouchableOpacity 
+            onPress={() => shareService.shareProfile(friend)} 
+            style={styles.shareIconButton}
+          >
+            <Ionicons name="share-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
+          
           {/* Profile Header */}
           <View style={styles.profileHeader}>
             <View style={styles.avatarContainer}>
@@ -507,6 +516,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+  },
+  shareIconButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
     zIndex: 10,
     padding: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',

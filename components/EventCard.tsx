@@ -2,6 +2,7 @@ import FriendProfileModal from '@/components/FriendProfileModal';
 import ProgressiveImage from '@/components/ProgressiveImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
+import { shareService } from '@/services/shareService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -40,6 +41,7 @@ interface Event {
   creator_name?: string; // Add creator name field
   creator_avatar?: string; // Add creator avatar field
   visibility?: 'public' | 'friends_only' | 'private'; // Add visibility field
+  shareable_slug?: string;
 }
 
 interface EventCardProps {
@@ -453,7 +455,10 @@ export default function EventCard({ event, index, isRSVPed: initialRSVPed }: Eve
             </View>
             
             <View style={styles.headerButtons}>
-              <TouchableOpacity style={styles.shareButtonTop}>
+              <TouchableOpacity 
+                style={styles.shareButtonTop}
+                onPress={() => shareService.shareEvent(event)}
+              >
                 <Ionicons name="share-outline" size={20} color="#ffffff" />
               </TouchableOpacity>
               <TouchableOpacity 

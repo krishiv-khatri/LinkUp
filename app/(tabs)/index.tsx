@@ -1,10 +1,13 @@
 import EventCard from '@/components/EventCard';
+import EventModal from '@/components/EventModal';
 import FilterBar from '@/components/FilterBar';
+import FriendProfileModal from '@/components/FriendProfileModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEvents } from '@/contexts/EventsContext';
+import { useDeepLinking } from '@/hooks/useDeepLinking';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -47,6 +50,12 @@ export default function ExploreScreen() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Deep linking state
+  const { pendingEvent, pendingProfile, isLoading: deepLinkLoading, clearPendingEvent, clearPendingProfile } = useDeepLinking();
+  const params = useLocalSearchParams();
+  const [urlParamsEvent, setUrlParamsEvent] = useState<any>(null);
+  const [urlParamsProfile, setUrlParamsProfile] = useState<any>(null);
+
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 100],
     outputRange: [1, 0.9],
@@ -65,6 +74,31 @@ export default function ExploreScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Handle URL parameters from share links
+  useEffect(() => {
+    if (params.openEvent && params.eventData) {
+      try {
+        const eventData = JSON.parse(params.eventData as string);
+        setUrlParamsEvent(eventData);
+        // Clear the params
+        router.setParams({ openEvent: undefined, eventData: undefined });
+      } catch (error) {
+        console.error('Error parsing event data from URL:', error);
+      }
+    }
+    
+    if (params.openProfile && params.profileData) {
+      try {
+        const profileData = JSON.parse(params.profileData as string);
+        setUrlParamsProfile(profileData);
+        // Clear the params
+        router.setParams({ openProfile: undefined, profileData: undefined });
+      } catch (error) {
+        console.error('Error parsing profile data from URL:', error);
+      }
+    }
+  }, [params]);
   
   const onRefresh = useCallback(() => {
     refreshEvents();
@@ -281,6 +315,31 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </SafeAreaView>
       </Animated.View>
+
+      {/* Deep Link Event Modal */}
+      {(pendingEvent || urlParamsEvent) && (
+        <EventModal
+          event={pendingEvent || urlParamsEvent}
+          visible={true}
+          onClose={() => {
+            if (pendingEvent) clearPendingEvent();
+            if (urlParamsEvent) setUrlParamsEvent(null);
+          }}
+          showAttendees={true}
+        />
+      )}
+
+      {/* Deep Link Profile Modal */}
+      {(pendingProfile || urlParamsProfile) && (
+        <FriendProfileModal
+          visible={true}
+          friend={pendingProfile || urlParamsProfile}
+          onClose={() => {
+            if (pendingProfile) clearPendingProfile();
+            if (urlParamsProfile) setUrlParamsProfile(null);
+          }}
+        />
+      )}
     </View>
   );
 }

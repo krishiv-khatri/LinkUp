@@ -1,6 +1,7 @@
 import AttendeesList from '@/components/AttendeesList';
 import { useAuth } from '@/contexts/AuthContext';
 import { eventService } from '@/services/eventService';
+import { shareService } from '@/services/shareService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -34,6 +35,7 @@ interface Event {
   creator_name?: string;
   creator_avatar?: string;
   visibility?: 'public' | 'friends_only' | 'private';
+  shareable_slug?: string;
 }
 
 interface Attendee {
@@ -343,7 +345,10 @@ export default function EventModal({ event, visible, onClose, showAttendees = tr
             </View>
             
             <View style={styles.headerButtons}>
-              <TouchableOpacity style={styles.shareButtonTop}>
+              <TouchableOpacity 
+                style={styles.shareButtonTop}
+                onPress={() => shareService.shareEvent(event)}
+              >
                 <Ionicons name="share-outline" size={20} color="#ffffff" />
               </TouchableOpacity>
               <TouchableOpacity 
